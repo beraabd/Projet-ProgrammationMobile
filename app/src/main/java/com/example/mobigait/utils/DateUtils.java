@@ -1,6 +1,7 @@
 package com.example.mobigait.utils;
 
 import java.util.Calendar;
+import java.util.Locale;
 
 public class DateUtils {
 
@@ -66,14 +67,15 @@ public class DateUtils {
         long hours = minutes / 60;
 
         minutes = minutes % 60;
-        seconds = seconds % 60;
 
         if (hours > 0) {
-            return String.format("%d:%02d:%02d", hours, minutes, seconds);
+            return String.format(Locale.getDefault(), "%d h %02d min", hours, minutes);
         } else {
-            return String.format("%02d:%02d", minutes, seconds);
+            return String.format(Locale.getDefault(), "%d min", minutes);
         }
     }
+
+
 
     public static String formatDate(long timestamp) {
         Calendar calendar = Calendar.getInstance();

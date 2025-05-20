@@ -15,14 +15,17 @@ import java.util.concurrent.Executors;
 public class StepRepository {
     private final StepDao stepDao;
     private final ExecutorService executorService;
-    private final LiveData<Step> latestStep;
 
     public StepRepository(Application application) {
         AppDatabase database = AppDatabase.getInstance(application);
         stepDao = database.stepDao();
         executorService = Executors.newSingleThreadExecutor();
-        latestStep = stepDao.getLatestStepLive();
     }
+    // Add this method to the StepRepository class
+    public LiveData<Step> getLatestStep() {
+        return stepDao.getLatestStepLiveData();
+    }
+
 
     public void insert(Step step) {
         executorService.execute(() -> stepDao.insert(step));
@@ -49,10 +52,6 @@ public class StepRepository {
             Step step = stepDao.getStepForDay(startOfDay, endOfDay);
             callback.onStepLoaded(step);
         });
-    }
-
-    public LiveData<Step> getLatestStep() {
-        return latestStep;
     }
 
     public void getLatestStepSync(StepCallback callback) {

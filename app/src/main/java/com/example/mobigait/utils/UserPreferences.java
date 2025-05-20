@@ -58,8 +58,9 @@ public class UserPreferences {
         preferences.edit().putInt(KEY_AGE, age).apply();
     }
 
+    // In the getStepGoal method, change the default value
     public int getStepGoal() {
-        return preferences.getInt(KEY_STEP_GOAL, 10000); // Default goal is 10,000 steps
+        return preferences.getInt(KEY_STEP_GOAL, 6000); // Changed from 10000 to 6000
     }
 
     public void setStepGoal(int stepGoal) {

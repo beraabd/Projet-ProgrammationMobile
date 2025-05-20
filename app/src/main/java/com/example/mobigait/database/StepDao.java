@@ -19,21 +19,23 @@ public interface StepDao {
     @Update
     void update(Step step);
 
-    @Query("SELECT * FROM steps WHERE timestamp >= :startTime AND timestamp <= :endTime ORDER BY timestamp DESC")
+    @Query("SELECT * FROM steps WHERE timestamp BETWEEN :startTime AND :endTime ORDER BY timestamp ASC")
     LiveData<List<Step>> getStepsBetweenDates(long startTime, long endTime);
 
-    @Query("SELECT SUM(stepCount) FROM steps WHERE timestamp >= :startTime AND timestamp <= :endTime")
+    @Query("SELECT SUM(stepCount) FROM steps WHERE timestamp BETWEEN :startTime AND :endTime")
     LiveData<Integer> getTotalStepsBetweenDates(long startTime, long endTime);
 
-    @Query("SELECT AVG(stepCount) FROM steps WHERE timestamp >= :startTime AND timestamp <= :endTime")
+    @Query("SELECT AVG(stepCount) FROM steps WHERE timestamp BETWEEN :startTime AND :endTime")
     LiveData<Double> getAverageStepsBetweenDates(long startTime, long endTime);
 
-    @Query("SELECT * FROM steps WHERE timestamp >= :startOfDay AND timestamp <= :endOfDay LIMIT 1")
-    Step getStepForDay(long startOfDay, long endOfDay);
+    @Query("SELECT * FROM steps WHERE timestamp BETWEEN :startTime AND :endTime ORDER BY timestamp DESC LIMIT 1")
+    Step getStepForDay(long startTime, long endTime);
 
     @Query("SELECT * FROM steps ORDER BY timestamp DESC LIMIT 1")
     Step getLatestStep();
 
+    // Add this method to the StepDao interface
     @Query("SELECT * FROM steps ORDER BY timestamp DESC LIMIT 1")
-    LiveData<Step> getLatestStepLive();
+    LiveData<Step> getLatestStepLiveData();
+
 }

@@ -6,25 +6,147 @@
     android:layout_height="match_parent"
     android:padding="16dp">
 
+    <!-- Date text at the top (replacing MobiGait title) -->
     <TextView
-        android:id="@+id/titleText"
+        android:id="@+id/dateText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="MobiGait"
+        android:text="Today"
         android:textColor="@color/primary"
         android:textSize="24sp"
         android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <TextView
-        android:id="@+id/dateText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Today"
-        android:textSize="16sp"
+    <!-- Dropdown button -->
+    <ImageButton
+        android:id="@+id/dropdownButton"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_dropdown"
+        android:tint="@color/primary"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Dropdown menu container (initially invisible) -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/dropdownMenu"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:visibility="gone"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="8dp"
+        app:layout_constraintTop_toBottomOf="@+id/dateText">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <!-- Success button -->
+            <LinearLayout
+                android:id="@+id/successButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/circle_background"
+                    android:padding="12dp"
+                    android:src="@drawable/ic_success"
+                    app:tint="@color/white" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Success"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- History button -->
+            <LinearLayout
+                android:id="@+id/historyButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/circle_background"
+                    android:padding="12dp"
+                    android:src="@drawable/ic_history"
+                    app:tint="@color/white" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="History"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Reset button -->
+            <LinearLayout
+                android:id="@+id/resetButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/circle_background"
+                    android:padding="12dp"
+                    android:src="@drawable/ic_reset"
+                    app:tint="@color/white" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Reset"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Deactivate button -->
+            <LinearLayout
+                android:id="@+id/deactivateButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/circle_background_red"
+                    android:padding="12dp"
+                    android:src="@drawable/ic_deactivate"
+                    app:tint="@color/white" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Deactivate"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
 
     <androidx.cardview.widget.CardView
         android:id="@+id/stepCounterCard"
@@ -33,7 +155,7 @@
         android:layout_marginTop="24dp"
         app:cardCornerRadius="12dp"
         app:cardElevation="4dp"
-        app:layout_constraintTop_toBottomOf="@+id/titleText">
+        app:layout_constraintTop_toBottomOf="@+id/dateText">
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
@@ -47,6 +169,17 @@
                 android:text="Today's Steps"
                 android:textSize="18sp"
                 app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <!-- Pause button next to title -->
+            <ImageButton
+                android:id="@+id/pauseButton"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_pause"
+                android:tint="@color/primary"
+                app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
 
             <TextView
@@ -68,7 +201,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:max="10000"
+                android:max="6000"
                 android:progress="0"
                 android:progressTint="@color/primary"
                 app:layout_constraintTop_toBottomOf="@+id/stepCounterValue" />
@@ -77,7 +210,7 @@
                 android:id="@+id/goalText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Goal: 10,000 steps"
+                android:text="Goal: 6,000 steps"
                 android:textSize="14sp"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toBottomOf="@+id/stepProgressBar"
@@ -86,6 +219,7 @@
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.cardview.widget.CardView>
 
+    <!-- Metrics Card -->
     <androidx.cardview.widget.CardView
         android:id="@+id/metricsCard"
         android:layout_width="match_parent"
@@ -95,158 +229,131 @@
         app:cardElevation="4dp"
         app:layout_constraintTop_toBottomOf="@+id/stepCounterCard">
 
-        <androidx.constraintlayout.widget.ConstraintLayout
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
             android:padding="16dp">
 
-            <TextView
-                android:id="@+id/metricsTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Activity Metrics"
-                android:textSize="18sp"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
-
+            <!-- Distance -->
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:orientation="horizontal"
-                app:layout_constraintTop_toBottomOf="@+id/metricsTitle">
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
 
-                <LinearLayout
-                    android:layout_width="0dp"
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@drawable/ic_distance"
+                    android:tint="@color/primary" />
+
+                <TextView
+                    android:id="@+id/distanceValue"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical">
+                    android:text="0.00 km"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
 
-                    <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_distance"
-                        app:tint="@color/primary" />
-
-                    <TextView
-                        android:id="@+id/distanceValue"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="0.00 km"
-                        android:textColor="@color/primary"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Distance"
-                        android:textSize="14sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="0dp"
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_calories"
-                        app:tint="@color/primary" />
-
-                    <TextView
-                        android:id="@+id/caloriesValue"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="0 kcal"
-                        android:textColor="@color/primary"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Calories"
-                        android:textSize="14sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical">
-
-                    <ImageView
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:src="@drawable/ic_time"
-                        app:tint="@color/primary" />
-
-                    <TextView
-                        android:id="@+id/durationValue"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="00:00"
-                        android:textColor="@color/primary"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Duration"
-                        android:textSize="14sp" />
-                </LinearLayout>
+                    android:text="Distance"
+                    android:textSize="12sp" />
             </LinearLayout>
-        </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <!-- Calories -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@drawable/ic_calories"
+                    android:tint="@color/primary" />
+
+                <TextView
+                    android:id="@+id/caloriesValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0 kcal"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Calories"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Duration -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@drawable/ic_time"
+                    android:tint="@color/primary" />
+
+                <TextView
+                    android:id="@+id/durationValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="00:00"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Duration"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
     </androidx.cardview.widget.CardView>
 
-    <Button
-        android:id="@+id/startTrackingButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:backgroundTint="@color/primary"
-        android:padding="12dp"
-        android:text="Start Tracking"
-        android:textColor="@color/white"
-        app:layout_constraintTop_toBottomOf="@+id/metricsCard" />
-
+    <!-- Weekly Summary Card -->
     <androidx.cardview.widget.CardView
-        android:id="@+id/weeklyOverviewCard"
+        android:id="@+id/weeklyCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         app:cardCornerRadius="12dp"
         app:cardElevation="4dp"
-        app:layout_constraintTop_toBottomOf="@+id/startTrackingButton">
+        app:layout_constraintTop_toBottomOf="@+id/metricsCard">
 
-        <androidx.constraintlayout.widget.ConstraintLayout
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
             android:padding="16dp">
 
             <TextView
-                android:id="@+id/weeklyOverviewTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Weekly Overview"
+                android:text="Weekly Summary"
                 android:textSize="18sp"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
+                android:textStyle="bold" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:orientation="horizontal"
-                app:layout_constraintTop_toBottomOf="@+id/weeklyOverviewTitle">
+                android:orientation="horizontal">
 
+                <!-- Monday -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -266,9 +373,10 @@
                         android:layout_height="24dp"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/circle_background"
-                        android:backgroundTint="@color/gray_light" />
+                        android:alpha="0.3" />
                 </LinearLayout>
 
+                <!-- Tuesday -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -288,9 +396,10 @@
                         android:layout_height="24dp"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/circle_background"
-                        android:backgroundTint="@color/gray_light" />
+                        android:alpha="0.3" />
                 </LinearLayout>
 
+                <!-- Wednesday -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -310,9 +419,10 @@
                         android:layout_height="24dp"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/circle_background"
-                        android:backgroundTint="@color/gray_light" />
+                        android:alpha="0.3" />
                 </LinearLayout>
 
+                <!-- Thursday -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -332,9 +442,10 @@
                         android:layout_height="24dp"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/circle_background"
-                        android:backgroundTint="@color/gray_light" />
+                        android:alpha="0.3" />
                 </LinearLayout>
 
+                <!-- Friday -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -354,9 +465,10 @@
                         android:layout_height="24dp"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/circle_background"
-                        android:backgroundTint="@color/gray_light" />
+                        android:alpha="0.3" />
                 </LinearLayout>
 
+                <!-- Saturday -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -376,9 +488,10 @@
                         android:layout_height="24dp"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/circle_background"
-                        android:backgroundTint="@color/gray_light" />
+                        android:alpha="0.3" />
                 </LinearLayout>
 
+                <!-- Sunday -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -398,9 +511,20 @@
                         android:layout_height="24dp"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/circle_background"
-                        android:backgroundTint="@color/gray_light" />
+                        android:alpha="0.3" />
                 </LinearLayout>
             </LinearLayout>
-        </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <TextView
+                android:id="@+id/weeklyAverageText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="8dp"
+                android:text="Weekly average: 0 steps"
+                android:textSize="14sp" />
+        </LinearLayout>
     </androidx.cardview.widget.CardView>
+
 </androidx.constraintlayout.widget.ConstraintLayout>
+

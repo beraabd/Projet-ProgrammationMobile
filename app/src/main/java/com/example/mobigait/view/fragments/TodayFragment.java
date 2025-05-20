@@ -1,5 +1,7 @@
 package com.example.mobigait.view.fragments;
 
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -10,13 +12,15 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
+import android.view.animation.OvershootInterpolator;
+import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.cardview.widget.CardView;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
@@ -27,6 +31,9 @@ import com.example.mobigait.utils.UserPreferences;
 import com.example.mobigait.viewmodel.TodayViewModel;
 
 import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 public class TodayFragment extends Fragment {
     private static final String TAG = "TodayFragment";
@@ -39,11 +46,15 @@ public class TodayFragment extends Fragment {
     private TextView caloriesValue;
     private TextView durationValue;
     private ProgressBar stepProgressBar;
-    private Button startTrackingButton;
     private TextView dateText;
     private TextView goalText;
+    private ImageButton pauseButton;
+    private ImageButton dropdownButton;
+    private CardView dropdownMenu;
+    private View successButton, historyButton, resetButton, deactivateButton;
 
-    private boolean isTracking = false;
+    private boolean isTracking = true; // Default to tracking
+    private boolean isDropdownVisible = false;
     private DecimalFormat df = new DecimalFormat("#.##");
 
     // Service connection
@@ -59,7 +70,7 @@ public class TodayFragment extends Fragment {
 
             // Update UI with service state
             isTracking = stepService.isTracking();
-            updateButtonState();
+            updatePauseButtonState();
 
             // Update view model with current step count
             viewModel.updateSteps(stepService.getStepCount());
@@ -94,32 +105,119 @@ public class TodayFragment extends Fragment {
         caloriesValue = view.findViewById(R.id.caloriesValue);
         durationValue = view.findViewById(R.id.durationValue);
         stepProgressBar = view.findViewById(R.id.stepProgressBar);
-        startTrackingButton = view.findViewById(R.id.startTrackingButton);
         dateText = view.findViewById(R.id.dateText);
         goalText = view.findViewById(R.id.goalText);
+        pauseButton = view.findViewById(R.id.pauseButton);
+        dropdownButton = view.findViewById(R.id.dropdownButton);
+        dropdownMenu = view.findViewById(R.id.dropdownMenu);
+
+        // Find dropdown menu buttons
+        successButton = view.findViewById(R.id.successButton);
+        historyButton = view.findViewById(R.id.historyButton);
+        resetButton = view.findViewById(R.id.resetButton);
+        deactivateButton = view.findViewById(R.id.deactivateButton);
 
         // Set today's date
-        dateText.setText(DateUtils.formatDate(System.currentTimeMillis()));
+        SimpleDateFormat dateFormat = new SimpleDateFormat("EEEE, MMM d", Locale.getDefault());
+        dateText.setText(dateFormat.format(new Date()));
 
         // Set goal text
         int goal = userPreferences.getStepGoal();
         goalText.setText("Goal: " + goal + " steps");
         stepProgressBar.setMax(goal);
 
-        // Set up button click listener
-        startTrackingButton.setOnClickListener(v -> {
-            if (isTracking) {
-                stopTracking();
-            } else {
-                startTracking();
-            }
-        });
+        // Set up button click listeners
+        setupClickListeners();
 
         // Observe ViewModel data
         observeViewModel();
 
+        // Start tracking automatically
+        startTracking();
+
         // Bind to the service
         bindStepService();
+    }
+
+    private void setupClickListeners() {
+        // Pause button
+        pauseButton.setOnClickListener(v -> {
+            if (isTracking) {
+                pauseTracking();
+            } else {
+                resumeTracking();
+            }
+        });
+
+        // Dropdown button
+        dropdownButton.setOnClickListener(v -> toggleDropdownMenu());
+
+        // Dropdown menu buttons
+        successButton.setOnClickListener(v -> {
+            Toast.makeText(requireContext(), "Success!", Toast.LENGTH_SHORT).show();
+            toggleDropdownMenu();
+        });
+
+        historyButton.setOnClickListener(v -> {
+            Toast.makeText(requireContext(), "History", Toast.LENGTH_SHORT).show();
+            toggleDropdownMenu();
+        });
+
+        resetButton.setOnClickListener(v -> {
+            resetSteps();
+            toggleDropdownMenu();
+        });
+
+        deactivateButton.setOnClickListener(v -> {
+            deactivateTracking();
+            toggleDropdownMenu();
+        });
+    }
+
+    private void toggleDropdownMenu() {
+        if (isDropdownVisible) {
+            // Hide menu with animation
+            ObjectAnimator scaleX = ObjectAnimator.ofFloat(dropdownMenu, "scaleX", 1f, 0.5f);
+            ObjectAnimator scaleY = ObjectAnimator.ofFloat(dropdownMenu, "scaleY", 1f, 0.5f);
+            ObjectAnimator alpha = ObjectAnimator.ofFloat(dropdownMenu, "alpha", 1f, 0f);
+
+            AnimatorSet animSet = new AnimatorSet();
+            animSet.playTogether(scaleX, scaleY, alpha);
+            animSet.setDuration(300);
+            animSet.start();
+
+            dropdownMenu.setVisibility(View.GONE);
+
+            // Rotate dropdown button back
+            ObjectAnimator rotation = ObjectAnimator.ofFloat(dropdownButton, "rotation", 180f, 0f);
+            rotation.setDuration(300);
+            rotation.start();
+
+            isDropdownVisible = false;
+        } else {
+            // Show menu with animation
+            dropdownMenu.setVisibility(View.VISIBLE);
+            dropdownMenu.setAlpha(0f);
+            dropdownMenu.setScaleX(0.5f);
+            dropdownMenu.setScaleY(0.5f);
+
+            ObjectAnimator scaleX = ObjectAnimator.ofFloat(dropdownMenu, "scaleX", 0.5f, 1f);
+            ObjectAnimator scaleY = ObjectAnimator.ofFloat(dropdownMenu, "scaleY", 0.5f, 1f);
+            ObjectAnimator alpha = ObjectAnimator.ofFloat(dropdownMenu, "alpha", 0f, 1f);
+
+            AnimatorSet animSet = new AnimatorSet();
+            animSet.playTogether(scaleX, scaleY, alpha);
+            animSet.setInterpolator(new OvershootInterpolator());
+            animSet.setDuration(300);
+            animSet.start();
+
+            // Rotate dropdown button
+            ObjectAnimator rotation = ObjectAnimator.ofFloat(dropdownButton, "rotation", 0f, 180f);
+            rotation.setDuration(300);
+            rotation.start();
+
+            isDropdownVisible = true;
+        }
     }
 
     private void observeViewModel() {
@@ -140,13 +238,16 @@ public class TodayFragment extends Fragment {
         });
 
         viewModel.getCurrentDuration().observe(getViewLifecycleOwner(), duration -> {
-            durationValue.setText(DateUtils.formatDuration(duration));
-            Log.d(TAG, "Duration updated: " + duration);
+            Log.d(TAG, "Observed duration update: " + duration);
+            if (duration != null) {
+                String formattedDuration = DateUtils.formatDuration(duration);
+                durationValue.setText(formattedDuration);
+            }
         });
 
         viewModel.isTracking().observe(getViewLifecycleOwner(), tracking -> {
             isTracking = tracking;
-            updateButtonState();
+            updatePauseButtonState();
             Log.d(TAG, "Tracking state updated: " + tracking);
         });
     }
@@ -164,30 +265,72 @@ public class TodayFragment extends Fragment {
 
         viewModel.setTracking(true);
         isTracking = true;
-        updateButtonState();
+        updatePauseButtonState();
 
-        Toast.makeText(requireContext(), "Step tracking started", Toast.LENGTH_SHORT).show();
         Log.d(TAG, "Started tracking");
     }
 
-    private void stopTracking() {
-        Intent serviceIntent = new Intent(requireContext(), StepCounterService.class);
-        serviceIntent.setAction(StepCounterService.ACTION_STOP_TRACKING);
-        requireContext().startService(serviceIntent);
+    private void pauseTracking() {
+        if (isBound && stepService != null) {
+            Intent serviceIntent = new Intent(requireContext(), StepCounterService.class);
+            serviceIntent.setAction(StepCounterService.ACTION_PAUSE_TRACKING);
+            requireContext().startService(serviceIntent);
 
-        viewModel.setTracking(false);
-        isTracking = false;
-        updateButtonState();
+            viewModel.setTracking(false);
+            isTracking = false;
+            updatePauseButtonState();
 
-        Toast.makeText(requireContext(), "Step tracking stopped", Toast.LENGTH_SHORT).show();
-        Log.d(TAG, "Stopped tracking");
+            Toast.makeText(requireContext(), "Tracking paused", Toast.LENGTH_SHORT).show();
+            Log.d(TAG, "Paused tracking");
+        }
     }
 
-    private void updateButtonState() {
+    private void resumeTracking() {
+        if (isBound && stepService != null) {
+            Intent serviceIntent = new Intent(requireContext(), StepCounterService.class);
+            serviceIntent.setAction(StepCounterService.ACTION_RESUME_TRACKING);
+            requireContext().startService(serviceIntent);
+
+            viewModel.setTracking(true);
+            isTracking = true;
+            updatePauseButtonState();
+
+            Toast.makeText(requireContext(), "Tracking resumed", Toast.LENGTH_SHORT).show();
+            Log.d(TAG, "Resumed tracking");
+        }
+    }
+
+    private void resetSteps() {
+        if (isBound && stepService != null) {
+            Intent serviceIntent = new Intent(requireContext(), StepCounterService.class);
+            serviceIntent.setAction(StepCounterService.ACTION_RESET_TRACKING);
+            requireContext().startService(serviceIntent);
+
+            Toast.makeText(requireContext(), "Steps reset", Toast.LENGTH_SHORT).show();
+            Log.d(TAG, "Reset steps");
+        }
+    }
+
+    private void deactivateTracking() {
+        if (isBound && stepService != null) {
+            Intent serviceIntent = new Intent(requireContext(), StepCounterService.class);
+            serviceIntent.setAction(StepCounterService.ACTION_STOP_TRACKING);
+            requireContext().startService(serviceIntent);
+
+            viewModel.setTracking(false);
+            isTracking = false;
+            updatePauseButtonState();
+
+            Toast.makeText(requireContext(), "Tracking deactivated", Toast.LENGTH_SHORT).show();
+            Log.d(TAG, "Deactivated tracking");
+        }
+    }
+
+    private void updatePauseButtonState() {
         if (isTracking) {
-            startTrackingButton.setText("Stop Tracking");
+            pauseButton.setImageResource(R.drawable.ic_pause);
         } else {
-            startTrackingButton.setText("Start Tracking");
+            pauseButton.setImageResource(R.drawable.ic_play);
         }
     }
 

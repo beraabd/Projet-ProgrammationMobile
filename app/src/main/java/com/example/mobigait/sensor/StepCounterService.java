@@ -13,7 +13,9 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
 
@@ -25,10 +27,17 @@ import com.example.mobigait.model.Step;
 import com.example.mobigait.repository.StepRepository;
 import com.example.mobigait.utils.UserPreferences;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 public class StepCounterService extends Service implements SensorEventListener {
 
     public static final String ACTION_START_TRACKING = "com.example.mobigait.ACTION_START_TRACKING";
+    public static final String ACTION_PAUSE_TRACKING = "com.example.mobigait.ACTION_PAUSE_TRACKING";
+    public static final String ACTION_RESUME_TRACKING = "com.example.mobigait.ACTION_RESUME_TRACKING";
     public static final String ACTION_STOP_TRACKING = "com.example.mobigait.ACTION_STOP_TRACKING";
+    public static final String ACTION_RESET_TRACKING = "com.example.mobigait.ACTION_RESET_TRACKING";
     public static final String ACTION_UPDATE_NOTIFICATION = "com.example.mobigait.ACTION_UPDATE_NOTIFICATION";
 
     private static final String CHANNEL_ID = "StepCounterChannel";
@@ -46,6 +55,7 @@ public class StepCounterService extends Service implements SensorEventListener {
     private int initialStepCount = -1;
     private long startTime = 0;
     private boolean isTracking = false;
+    private boolean isPaused = false;
 
     // For accelerometer-based step counting
     private static final float STEP_THRESHOLD = 12.0f;
@@ -113,9 +123,14 @@ public class StepCounterService extends Service implements SensorEventListener {
 
             if (ACTION_START_TRACKING.equals(action)) {
                 startTracking();
+            } else if (ACTION_PAUSE_TRACKING.equals(action)) {
+                pauseTracking();
+            } else if (ACTION_RESUME_TRACKING.equals(action)) {
+                resumeTracking();
             } else if (ACTION_STOP_TRACKING.equals(action)) {
                 stopTracking();
-                stopSelf();
+            } else if (ACTION_RESET_TRACKING.equals(action)) {
+                resetSteps();
             } else if (ACTION_UPDATE_NOTIFICATION.equals(action)) {
                 updateNotification();
             }
@@ -133,11 +148,55 @@ public class StepCounterService extends Service implements SensorEventListener {
 
         Log.d(TAG, "Starting tracking");
         isTracking = true;
+        isPaused = false;
 
         // Start as foreground service with notification
         startForeground(NOTIFICATION_ID, createNotification());
 
         // Register sensor listener
+        registerSensorListeners();
+
+        // Acquire wake lock
+        if (!wakeLock.isHeld()) {
+            wakeLock.acquire();
+            Log.d(TAG, "Acquired wake lock");
+        }
+    }
+
+    private void pauseTracking() {
+        if (!isTracking || isPaused) {
+            Log.d(TAG, "Not tracking or already paused, ignoring pause request");
+            return;
+        }
+
+        Log.d(TAG, "Pausing tracking");
+        isPaused = true;
+
+        // Unregister sensor listener to save battery
+        sensorManager.unregisterListener(this);
+        Log.d(TAG, "Unregistered sensor listeners");
+
+        // Update notification
+        updateNotification();
+    }
+
+    private void resumeTracking() {
+        if (!isTracking || !isPaused) {
+            Log.d(TAG, "Not tracking or not paused, ignoring resume request");
+            return;
+        }
+
+        Log.d(TAG, "Resuming tracking");
+        isPaused = false;
+
+        // Register sensor listeners again
+        registerSensorListeners();
+
+        // Update notification
+        updateNotification();
+    }
+
+    private void registerSensorListeners() {
         if (useAccelerometer) {
             if (accelerometer != null) {
                 sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
@@ -146,12 +205,6 @@ public class StepCounterService extends Service implements SensorEventListener {
         } else if (stepSensor != null) {
             sensorManager.registerListener(this, stepSensor, SensorManager.SENSOR_DELAY_NORMAL);
             Log.d(TAG, "Registered step counter listener");
-        }
-
-        // Acquire wake lock
-        if (!wakeLock.isHeld()) {
-            wakeLock.acquire();
-            Log.d(TAG, "Acquired wake lock");
         }
     }
 
@@ -163,6 +216,7 @@ public class StepCounterService extends Service implements SensorEventListener {
 
         Log.d(TAG, "Stopping tracking");
         isTracking = false;
+        isPaused = false;
 
         // Unregister sensor listener
         sensorManager.unregisterListener(this);
@@ -182,8 +236,25 @@ public class StepCounterService extends Service implements SensorEventListener {
         Log.d(TAG, "Stopped foreground service");
     }
 
+    private void resetSteps() {
+        Log.d(TAG, "Resetting steps");
+        stepCount = 0;
+        initialStepCount = -1;
+        startTime = System.currentTimeMillis();
+
+        // Save reset data
+        updateStepData();
+
+        // Update notification
+        updateNotification();
+    }
+
     @Override
     public void onSensorChanged(SensorEvent event) {
+        if (isPaused) {
+            return; // Don't process events when paused
+        }
+
         if (event.sensor.getType() == Sensor.TYPE_STEP_COUNTER) {
             // Using built-in step counter
             int rawStepCount = (int) event.values[0];
@@ -278,8 +349,10 @@ public class StepCounterService extends Service implements SensorEventListener {
         PendingIntent pendingIntent = PendingIntent.getActivity(
                 this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
 
+        String statusText = isPaused ? "Tracking paused" : "Tracking your steps";
+
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("MobiGait is tracking your steps")
+                .setContentTitle("MobiGait is " + statusText)
                 .setContentText("Steps: " + stepCount)
                 .setSmallIcon(R.drawable.ic_home)
                 .setContentIntent(pendingIntent)
@@ -308,7 +381,9 @@ public class StepCounterService extends Service implements SensorEventListener {
     @Override
     public void onDestroy() {
         Log.d(TAG, "Service being destroyed");
-        stopTracking();
+        if (isTracking) {
+            stopTracking();
+        }
         super.onDestroy();
     }
 
@@ -318,6 +393,10 @@ public class StepCounterService extends Service implements SensorEventListener {
     }
 
     public boolean isTracking() {
-        return isTracking;
+        return isTracking && !isPaused;
+    }
+
+    public boolean isPaused() {
+        return isPaused;
     }
 }
