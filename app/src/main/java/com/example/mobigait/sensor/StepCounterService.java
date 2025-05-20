@@ -111,6 +111,7 @@ public class StepCounterService extends Service implements SensorEventListener {
                 Log.d(TAG, "No previous step data found");
                 stepCount = 0;
                 startTime = System.currentTimeMillis();
+                startTime = System.currentTimeMillis();
             }
         });
     }

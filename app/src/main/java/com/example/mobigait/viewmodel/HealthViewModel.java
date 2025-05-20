@@ -29,39 +29,24 @@ public class HealthViewModel extends AndroidViewModel {
     private final MutableLiveData<String> gaitStatus = new MutableLiveData<>("Normal");
     private final MutableLiveData<Float> currentWeight = new MutableLiveData<>();
 
+    private LiveData<Weight> latestWeight;
+
     public HealthViewModel(@NonNull Application application) {
         super(application);
         weightRepository = new WeightRepository(application);
         stepRepository = new StepRepository(application);
         userPreferences = new UserPreferences(application);
 
+        // Get the latest weight as LiveData
+        latestWeight = weightRepository.getLatestWeight();
+
         loadLatestWeight();
         analyzeGait();
     }
 
     private void loadLatestWeight() {
-        weightRepository.getLatestWeight(weight -> {
-            if (weight != null) {
-                // We already have weight data in the database
-                currentWeight.postValue(weight.getWeight());
-                calculateBmi();
-                Log.d(TAG, "Using existing weight from database: " + weight.getWeight() + "kg");
-            } else {
-                // No weight data in database, use profile weight and add it to database
-                float profileWeight = userPreferences.getWeight();
-                currentWeight.postValue(profileWeight);
-
-                // Only add to database if it's a valid weight
-                if (profileWeight > 0) {
-                    // Create a weight entry with the current timestamp
-                    Weight newWeight = new Weight(System.currentTimeMillis(), profileWeight);
-                    weightRepository.insert(newWeight);
-                    Log.d(TAG, "Added initial weight to database: " + profileWeight + "kg");
-                }
-
-                calculateBmi();
-            }
-        });
+        latestWeight = weightRepository.getLatestWeight();
+        // Then you can observe this LiveData from your fragment/activity
     }
 
     private void calculateBmi() {

@@ -1,6 +1,7 @@
 package com.example.mobigait.repository;
 
 import android.app.Application;
+import android.util.Log;
 
 import androidx.lifecycle.LiveData;
 
@@ -13,6 +14,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class WeightRepository {
+    private static final String TAG = "WeightRepository";
+
     private final WeightDao weightDao;
     private final ExecutorService executorService;
 
@@ -23,29 +26,29 @@ public class WeightRepository {
     }
 
     public void insert(Weight weight) {
-        executorService.execute(() -> weightDao.insert(weight));
+        executorService.execute(() -> {
+            weightDao.insert(weight);
+            Log.d(TAG, "Inserted weight record: " + weight.getWeight() + " kg");
+        });
     }
 
     public void update(Weight weight) {
         executorService.execute(() -> weightDao.update(weight));
     }
 
-    public LiveData<List<Weight>> getAllWeights() {
-        return weightDao.getAllWeights();
-    }
-
     public LiveData<List<Weight>> getWeightsBetweenDates(long startTime, long endTime) {
         return weightDao.getWeightsBetweenDates(startTime, endTime);
     }
 
-    public void getLatestWeight(WeightCallback callback) {
-        executorService.execute(() -> {
-            Weight weight = weightDao.getLatestWeight();
-            callback.onWeightLoaded(weight);
-        });
+    public LiveData<Weight> getLatestWeight() {
+        return weightDao.getLatestWeight();
     }
 
-    public interface WeightCallback {
-        void onWeightLoaded(Weight weight);
+    public List<Weight> getAllWeightsSync() {
+        return weightDao.getAllWeightsSync();
+    }
+
+    public void deleteAllWeights() {
+        executorService.execute(() -> weightDao.deleteAllWeights());
     }
 }
