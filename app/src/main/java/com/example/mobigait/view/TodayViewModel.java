@@ -1,4 +1,4 @@
-package com.example.mobigait.viewmodel;
+package com.example.mobigait.view;
 
 import android.app.Application;
 import android.util.Log;

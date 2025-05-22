@@ -15,6 +15,7 @@ public class UserPreferences {
     private static final String KEY_SENSOR_SENSITIVITY = "sensor_sensitivity";
     private static final String KEY_SENSOR_THRESHOLD = "sensor_threshold";
     private static final String KEY_STEP_COUNT = "step_count";
+    private static final String KEY_TRACKING_ACTIVE = "tracking_active";
 
     private final SharedPreferences preferences;
 
@@ -108,6 +109,22 @@ public class UserPreferences {
 
     public boolean hasCompletedOnboarding() {
         return !getGender().isEmpty() && getHeight() > 0 && getWeight() > 0 && getAge() > 0;
+    }
+
+    /**
+     * Save whether tracking is currently active.
+     */
+    public void setTrackingActive(boolean active) {
+        preferences.edit()
+            .putBoolean(KEY_TRACKING_ACTIVE, active)
+            .apply();
+    }
+
+    /**
+     * Return last saved tracking‐active flag (default false).
+     */
+    public boolean isTrackingActive() {
+        return preferences.getBoolean(KEY_TRACKING_ACTIVE, false);
     }
 }
 
