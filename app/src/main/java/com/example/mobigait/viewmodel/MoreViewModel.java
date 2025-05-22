@@ -136,8 +136,11 @@ public class MoreViewModel extends AndroidViewModel {
                 // Clear weight data
                 weightRepository.deleteAllWeights();
 
-                // Reset step count in preferences
-                userPreferences.resetStepCount();
+                // Reset all user preferences
+                userPreferences.resetAllPreferences();
+
+                // Reset first time flag to true to trigger onboarding
+                userPreferences.setFirstTime(true);
 
                 // Callback on main thread
                 android.os.Handler mainHandler = new android.os.Handler(getApplication().getMainLooper());

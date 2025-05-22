@@ -111,20 +111,42 @@ public class UserPreferences {
         return !getGender().isEmpty() && getHeight() > 0 && getWeight() > 0 && getAge() > 0;
     }
 
-    /**
-     * Save whether tracking is currently active.
-     */
     public void setTrackingActive(boolean active) {
         preferences.edit()
-            .putBoolean(KEY_TRACKING_ACTIVE, active)
-            .apply();
+                .putBoolean(KEY_TRACKING_ACTIVE, active)
+                .apply();
     }
 
-    /**
-     * Return last saved tracking‐active flag (default false).
-     */
     public boolean isTrackingActive() {
         return preferences.getBoolean(KEY_TRACKING_ACTIVE, false);
     }
-}
 
+    /**
+     * Reset all user preferences to default values
+     */
+    public void resetAllPreferences() {
+        SharedPreferences.Editor editor = preferences.edit();
+
+        // Set first time flag to true to trigger onboarding
+        editor.putBoolean(KEY_FIRST_TIME, true);
+
+        // Clear user profile data
+        editor.putString(KEY_GENDER, "Male"); // Default gender
+        editor.putFloat(KEY_HEIGHT, 170f);    // Default height
+        editor.putFloat(KEY_WEIGHT, 70f);     // Default weight
+        editor.putInt(KEY_AGE, 30);           // Default age
+
+        // Reset app settings
+        editor.putInt(KEY_STEP_GOAL, 10000);  // Default step goal
+        editor.putString(KEY_THEME, "Light"); // Default theme
+        editor.putString(KEY_SENSOR_SENSITIVITY, "Medium"); // Default sensitivity
+        editor.putFloat(KEY_SENSOR_THRESHOLD, 12.0f);      // Default threshold
+
+        // Reset tracking data
+        editor.putInt(KEY_STEP_COUNT, 0);
+        editor.putBoolean(KEY_TRACKING_ACTIVE, false);
+
+        // Apply all changes
+        editor.apply();
+    }
+}

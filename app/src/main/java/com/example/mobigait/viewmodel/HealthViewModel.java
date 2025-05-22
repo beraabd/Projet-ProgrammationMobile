@@ -40,13 +40,29 @@ public class HealthViewModel extends AndroidViewModel {
         // Get the latest weight as LiveData
         latestWeight = weightRepository.getLatestWeight();
 
-        loadLatestWeight();
-        analyzeGait();
-    }
+        // Observe latest weight changes
+        latestWeight.observeForever(weight -> {
+            if (weight != null) {
+                currentWeight.setValue(weight.getWeight());
+                calculateBmi();
+            } else {
+                // If no weight records exist, use the weight from user preferences
+                float prefWeight = userPreferences.getWeight();
+                if (prefWeight > 0) {
+                    currentWeight.setValue(prefWeight);
+                    calculateBmi();
+                }
+            }
+        });
 
-    private void loadLatestWeight() {
-        latestWeight = weightRepository.getLatestWeight();
-        // Then you can observe this LiveData from your fragment/activity
+        // Initialize with current values from preferences
+        float prefWeight = userPreferences.getWeight();
+        if (prefWeight > 0) {
+            currentWeight.setValue(prefWeight);
+            calculateBmi();
+        }
+
+        analyzeGait();
     }
 
     private void calculateBmi() {
@@ -139,5 +155,17 @@ public class HealthViewModel extends AndroidViewModel {
 
     public float getUserHeight() {
         return userPreferences.getHeight();
+    }
+
+    // Call this method when user data might have changed
+    public void refreshUserData() {
+        float height = userPreferences.getHeight();
+        float weight = userPreferences.getWeight();
+
+        if (weight > 0) {
+            currentWeight.setValue(weight);
+        }
+
+        calculateBmi();
     }
 }

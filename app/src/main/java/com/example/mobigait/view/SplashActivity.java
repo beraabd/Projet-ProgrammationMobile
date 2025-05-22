@@ -3,7 +3,7 @@ package com.example.mobigait.view;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
-
+import android.util.Log;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.mobigait.MainActivity;
@@ -12,28 +12,39 @@ import com.example.mobigait.utils.UserPreferences;
 
 public class SplashActivity extends AppCompatActivity {
 
-    private static final int SPLASH_TIMEOUT = 2000; // 2 seconds
-    private UserPreferences userPreferences;
+    private static final String TAG = "SplashActivity";
+    private static final int SPLASH_DURATION = 1500; // 1.5 seconds
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_splash);
 
-        userPreferences = new UserPreferences(this);
-
         new Handler().postDelayed(() -> {
-            // Check if user has completed onboarding
-            if (userPreferences.hasCompletedOnboarding()) {
-                // User has completed onboarding, go to main activity
-                Intent intent = new Intent(SplashActivity.this, MainActivity.class);
+            UserPreferences userPreferences = new UserPreferences(this);
+
+            // Force first-time flag to true for testing (remove this in production)
+            // userPreferences.setFirstTime(true);
+
+            boolean isFirstTime = userPreferences.isFirstTime();
+            boolean hasCompletedOnboarding = userPreferences.hasCompletedOnboarding();
+
+            Log.d(TAG, "isFirstTime: " + isFirstTime);
+            Log.d(TAG, "hasCompletedOnboarding: " + hasCompletedOnboarding);
+
+            // Check if this is the first time or if onboarding is incomplete
+            if (isFirstTime || !hasCompletedOnboarding) {
+                Log.d(TAG, "Starting OnboardingActivity");
+                // First time user, show onboarding
+                Intent intent = new Intent(SplashActivity.this, OnboardingActivity.class);
                 startActivity(intent);
             } else {
-                // User has not completed onboarding, go to onboarding activity
-                Intent intent = new Intent(SplashActivity.this, OnboardingActivity.class);
+                Log.d(TAG, "Starting MainActivity");
+                // Returning user, go to main activity
+                Intent intent = new Intent(SplashActivity.this, MainActivity.class);
                 startActivity(intent);
             }
             finish();
-        }, SPLASH_TIMEOUT);
+        }, SPLASH_DURATION);
     }
 }

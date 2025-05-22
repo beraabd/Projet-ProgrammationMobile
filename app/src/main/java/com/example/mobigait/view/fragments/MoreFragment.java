@@ -26,6 +26,7 @@ import com.example.mobigait.utils.UserPreferences;
 import com.example.mobigait.viewmodel.MoreViewModel;
 
 import java.util.Locale;
+import com.example.mobigait.view.SplashActivity;
 
 public class MoreFragment extends Fragment {
 
@@ -494,8 +495,17 @@ public class MoreFragment extends Fragment {
 
                                     if (success) {
                                         Toast.makeText(requireContext(), "All data has been cleared", Toast.LENGTH_LONG).show();
-                                        // Update UI
-                                        updateUIWithUserData();
+
+                                        // Set first time flag to true to trigger onboarding
+                                        userPreferences.setFirstTime(true);
+
+                                        // Restart the app from splash screen
+                                        Intent intent = new Intent(requireContext(), SplashActivity.class);
+                                        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP |
+                                                       Intent.FLAG_ACTIVITY_NEW_TASK |
+                                                       Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                                        startActivity(intent);
+                                        requireActivity().finish();
                                     } else {
                                         Toast.makeText(requireContext(), "Failed to clear data", Toast.LENGTH_LONG).show();
                                     }
@@ -506,8 +516,7 @@ public class MoreFragment extends Fragment {
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
-    }
-}
+    }}
 
 
 
