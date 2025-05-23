@@ -67,6 +67,9 @@ public class StepRepository {
         return stepDao.getTotalStepsBetweenDates(startTime, endTime);
     }
 
+    /**
+     * Get the average steps between two dates
+     */
     public LiveData<Double> getAverageStepsBetweenDates(long startTime, long endTime) {
         return stepDao.getAverageStepsBetweenDates(startTime, endTime);
     }
@@ -135,5 +138,19 @@ public class StepRepository {
             Step latestStep = stepDao.getLatestStepSync();
             callback.onStepLoaded(latestStep);
         });
+    }
+
+    /**
+     * Get steps between two dates synchronously
+     */
+    public void getStepsBetweenDatesSync(long startTime, long endTime, StepDataCallback callback) {
+        new Thread(() -> {
+            List<Step> steps = stepDao.getStepsBetweenDatesSync(startTime, endTime);
+            callback.onStepDataLoaded(steps);
+        }).start();
+    }
+
+    public interface StepDataCallback {
+        void onStepDataLoaded(List<Step> steps);
     }
 }

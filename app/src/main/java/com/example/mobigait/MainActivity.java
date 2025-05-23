@@ -13,6 +13,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 
+import com.example.mobigait.sensor.GaitAnalysisService;
 import com.example.mobigait.sensor.StepCounterService;
 import com.example.mobigait.view.fragments.HealthFragment;
 import com.example.mobigait.view.fragments.MoreFragment;
@@ -89,6 +90,15 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
+// Add to your MainActivity:
+
+    private void startGaitAnalysisService() {
+        Intent serviceIntent = new Intent(this, GaitAnalysisService.class);
+        serviceIntent.setAction("START_ANALYSIS");
+        startService(serviceIntent);
+    }
+
+// Call this method in onCreate or onResume
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {

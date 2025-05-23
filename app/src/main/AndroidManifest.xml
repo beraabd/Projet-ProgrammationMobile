@@ -53,6 +53,12 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync|health" />
+
+        <!-- Gait Analysis Service -->
+        <service
+            android:name=".sensor.GaitAnalysisService"
+            android:enabled="true"
+            android:exported="false" />
     </application>
 
 </manifest>

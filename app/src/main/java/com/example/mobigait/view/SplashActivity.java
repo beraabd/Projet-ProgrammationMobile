@@ -9,6 +9,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.example.mobigait.MainActivity;
 import com.example.mobigait.R;
 import com.example.mobigait.utils.UserPreferences;
+import com.example.mobigait.model.Weight;
+import com.example.mobigait.repository.WeightRepository;
+import java.util.List;
 
 public class SplashActivity extends AppCompatActivity {
 
@@ -43,8 +46,26 @@ public class SplashActivity extends AppCompatActivity {
                 // Returning user, go to main activity
                 Intent intent = new Intent(SplashActivity.this, MainActivity.class);
                 startActivity(intent);
+
+                // Check if we need to initialize weight data
+                checkAndInitializeWeightData(userPreferences);
             }
             finish();
         }, SPLASH_DURATION);
+    }
+
+    private void checkAndInitializeWeightData(UserPreferences userPreferences) {
+        // Run this in a background thread
+        new Thread(() -> {
+            WeightRepository weightRepository = new WeightRepository(getApplication());
+            List<Weight> weights = weightRepository.getAllWeightsSync();
+
+            // If there's no weight data but user has a weight in preferences
+            if ((weights == null || weights.isEmpty()) && userPreferences.getWeight() > 0) {
+                // Add the user's weight from preferences to the database
+                Weight initialWeight = new Weight(System.currentTimeMillis(), userPreferences.getWeight());
+                weightRepository.insert(initialWeight);
+            }
+        }).start();
     }
 }

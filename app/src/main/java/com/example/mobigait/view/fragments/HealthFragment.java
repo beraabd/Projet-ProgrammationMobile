@@ -1,12 +1,18 @@
 package com.example.mobigait.view.fragments;
 
-import android.content.Context;
 import android.app.AlertDialog;
+import android.app.DatePickerDialog;
+import android.content.Intent;
+import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -14,24 +20,29 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.mobigait.R;
+import com.example.mobigait.adapter.GaitHistoryAdapter;
+import com.example.mobigait.model.GaitData;
 import com.example.mobigait.model.Weight;
-import com.example.mobigait.utils.UserPreferences;
+import com.example.mobigait.sensor.GaitAnalysisService;
 import com.example.mobigait.viewmodel.HealthViewModel;
 import com.github.mikephil.charting.charts.LineChart;
+import com.github.mikephil.charting.components.Legend;
 import com.github.mikephil.charting.components.XAxis;
+import com.github.mikephil.charting.components.YAxis;
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.ValueFormatter;
-import com.github.mikephil.charting.utils.MPPointF;
-import com.github.mikephil.charting.highlight.Highlight;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -39,17 +50,27 @@ import java.util.Locale;
 public class HealthFragment extends Fragment {
 
     private HealthViewModel viewModel;
-    private UserPreferences userPreferences;
-
-    // UI elements
-    private TextView gaitStatusValue;
-    private TextView gaitStatusDescription;
     private TextView bmiValue;
     private TextView bmiCategory;
-    private TextView bmiDescription;
     private View bmiIndicator;
+    private TextView gaitStatusValue;
+    private TextView gaitCadenceValue;
+    private TextView gaitSymmetryValue;
+    private TextView gaitVariabilityValue;
+    private TextView gaitStepLengthValue;
+    private TextView currentWeightValue;
+    private TextView weightChangeValue;
     private LineChart weightChart;
-    private FloatingActionButton addWeightButton;
+    private Button addWeightButton;
+    private Button startGaitAnalysisButton;
+    private Button deleteGaitHistoryButton;
+    private Button explainGaitMetricsButton;
+    private ImageButton gaitInfoButton;
+    private RecyclerView gaitHistoryRecyclerView;
+    private GaitHistoryAdapter gaitHistoryAdapter;
+
+    private Handler handler = new Handler(Looper.getMainLooper());
+    private Runnable analysisTimeoutRunnable;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -63,36 +84,112 @@ public class HealthFragment extends Fragment {
 
         // Initialize ViewModel
         viewModel = new ViewModelProvider(this).get(HealthViewModel.class);
-        userPreferences = new UserPreferences(requireContext());
 
         // Initialize views
         initializeViews(view);
-        setupClickListeners();
-        setupObservers();
+
+        // Setup chart
         setupWeightChart();
+
+        // Setup recycler view for gait history
+        setupGaitHistoryRecyclerView();
+
+        // Setup button listeners
+        setupButtonListeners();
+
+        // Observe data
+        observeViewModel();
     }
 
+    // Initialize all views
     private void initializeViews(View view) {
-        gaitStatusValue = view.findViewById(R.id.gaitStatusValue);
-        gaitStatusDescription = view.findViewById(R.id.gaitStatusDescription);
         bmiValue = view.findViewById(R.id.bmiValue);
         bmiCategory = view.findViewById(R.id.bmiCategory);
-        bmiDescription = view.findViewById(R.id.bmiDescription);
         bmiIndicator = view.findViewById(R.id.bmiIndicator);
+        gaitStatusValue = view.findViewById(R.id.gaitStatusValue);
+        currentWeightValue = view.findViewById(R.id.currentWeightValue);
+        weightChangeValue = view.findViewById(R.id.weightChangeValue);
         weightChart = view.findViewById(R.id.weightChart);
         addWeightButton = view.findViewById(R.id.addWeightButton);
+
+        // Gait analysis related views
+        gaitCadenceValue = view.findViewById(R.id.gaitCadenceValue);
+        gaitSymmetryValue = view.findViewById(R.id.gaitSymmetryValue);
+        gaitVariabilityValue = view.findViewById(R.id.gaitVariabilityValue);
+        gaitStepLengthValue = view.findViewById(R.id.gaitStepLengthValue);
+        startGaitAnalysisButton = view.findViewById(R.id.startGaitAnalysisButton);
+        gaitInfoButton = view.findViewById(R.id.gaitInfoButton);
+        deleteGaitHistoryButton = view.findViewById(R.id.deleteGaitHistoryButton);
+        explainGaitMetricsButton = view.findViewById(R.id.explainGaitMetricsButton);
+        gaitHistoryRecyclerView = view.findViewById(R.id.gaitHistoryRecyclerView);
     }
 
-    private void setupClickListeners() {
-        addWeightButton.setOnClickListener(v -> showAddWeightDialog());
+    private void setupButtonListeners() {
+        // Weight button
+        addWeightButton.setOnClickListener(v -> {
+            showAddWeightDialog();
+        });
+
+        // Gait analysis button
+        if (startGaitAnalysisButton != null) {
+            startGaitAnalysisButton.setOnClickListener(v -> {
+                toggleGaitAnalysis();
+            });
+        }
+
+        // Gait info button
+        if (gaitInfoButton != null) {
+            gaitInfoButton.setOnClickListener(v -> {
+                showGaitMetricsExplanation();
+            });
+        }
+
+        // Delete gait history button
+        if (deleteGaitHistoryButton != null) {
+            deleteGaitHistoryButton.setOnClickListener(v -> {
+                showDeleteGaitHistoryConfirmation();
+            });
+        }
+
+        // Explain gait metrics button
+        if (explainGaitMetricsButton != null) {
+            explainGaitMetricsButton.setOnClickListener(v -> {
+                showGaitMetricsExplanation();
+            });
+        }
     }
 
-    private void setupObservers() {
-        // Observe BMI
+    private void showDeleteGaitHistoryConfirmation() {
+        new AlertDialog.Builder(requireContext())
+                .setTitle("Delete Gait History")
+                .setMessage("Are you sure you want to delete all gait analysis history? This action cannot be undone.")
+                .setPositiveButton("Delete", (dialog, which) -> {
+                    viewModel.deleteAllGaitHistory();
+                    Toast.makeText(requireContext(), "Gait history deleted", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void setupGaitHistoryRecyclerView() {
+        if (gaitHistoryRecyclerView != null) {
+            gaitHistoryRecyclerView.setLayoutManager(new LinearLayoutManager(requireContext()));
+            gaitHistoryAdapter = new GaitHistoryAdapter();
+            gaitHistoryRecyclerView.setAdapter(gaitHistoryAdapter);
+        }
+    }
+
+    private void observeViewModel() {
+        // Observe BMI data
         viewModel.getCurrentBmi().observe(getViewLifecycleOwner(), bmi -> {
             if (bmi != null) {
                 bmiValue.setText(String.format(Locale.getDefault(), "%.1f", bmi));
                 updateBmiIndicator(bmi);
+
+                // Set BMI value color based on category
+                String category = getBmiCategory(bmi);
+                int color = getBmiCategoryColor(category);
+                bmiValue.setTextColor(color);
             }
         });
 
@@ -100,33 +197,7 @@ public class HealthFragment extends Fragment {
         viewModel.getBmiCategory().observe(getViewLifecycleOwner(), category -> {
             if (category != null) {
                 bmiCategory.setText(category);
-                updateBmiDescription(category);
-
-                // Change BMI value color based on category
-                int color;
-                switch (category) {
-                    case "Underweight":
-                        color = getResources().getColor(R.color.blue, null);
-                        break;
-                    case "Normal":
-                        color = getResources().getColor(R.color.green, null);
-                        break;
-                    case "Overweight":
-                        color = getResources().getColor(R.color.yellow, null);
-                        break;
-                    case "Obese":
-                        color = getResources().getColor(R.color.orange, null);
-                        break;
-                    case "Severely Obese":
-                        color = getResources().getColor(R.color.red, null);
-                        break;
-                    default:
-                        color = getResources().getColor(R.color.primary, null);
-                        break;
-                }
-
-                // Apply the color to the BMI value text
-                bmiValue.setTextColor(color);
+                int color = getBmiCategoryColor(category);
                 bmiCategory.setTextColor(color);
             }
         });
@@ -134,79 +205,169 @@ public class HealthFragment extends Fragment {
         // Observe gait status
         viewModel.getGaitStatus().observe(getViewLifecycleOwner(), status -> {
             if (status != null) {
+                gaitStatusValue.setText(status);
+
+                // Set color based on status
+                int statusColor;
                 if (status.equals("Normal")) {
-                    gaitStatusValue.setText("Normal ✅");
-                    gaitStatusValue.setTextColor(getResources().getColor(R.color.primary, null));
-                    gaitStatusDescription.setText("Your walking pattern appears to be normal based on sensor data analysis.");
-                } else {
+                    statusColor = Color.parseColor("#4CAF50"); // Green
+                    gaitStatusValue.setText(status + " ✅");
+                } else if (status.equals("Not analyzed")) {
+                    statusColor = Color.GRAY;
                     gaitStatusValue.setText(status);
-                    gaitStatusValue.setTextColor(getResources().getColor(R.color.red, null));
-                    gaitStatusDescription.setText("Not enough data to analyze your walking pattern. Please walk more to get an accurate assessment.");
+                } else {
+                    statusColor = Color.parseColor("#F44336"); // Red
+                    gaitStatusValue.setText(status + " ⚠️");
                 }
+                gaitStatusValue.setTextColor(statusColor);
+            }
+        });
+
+        // Observe current weight
+        viewModel.getCurrentWeight().observe(getViewLifecycleOwner(), weight -> {
+            if (weight != null) {
+                currentWeightValue.setText(String.format(Locale.getDefault(), "%.1f kg", weight));
+            } else {
+                currentWeightValue.setText("--");
             }
         });
 
         // Observe weight history for chart
         viewModel.getWeightHistory().observe(getViewLifecycleOwner(), this::updateWeightChart);
 
-        // Observe current weight
-        viewModel.getCurrentWeight().observe(getViewLifecycleOwner(), weight -> {
-            // This will trigger BMI calculation in the ViewModel
+        // Observe latest gait data
+        viewModel.getLatestGaitData().observe(getViewLifecycleOwner(), gaitData -> {
+            if (gaitData != null) {
+                updateGaitMetricsUI(gaitData);
+            }
+        });
+
+        // Observe gait history
+        viewModel.getRecentGaitData().observe(getViewLifecycleOwner(), gaitDataList -> {
+            if (gaitDataList != null && gaitHistoryAdapter != null) {
+                gaitHistoryAdapter.submitList(gaitDataList);
+            }
+        });
+
+        // Observe analyzing state
+        viewModel.isAnalyzing().observe(getViewLifecycleOwner(), isAnalyzing -> {
+            if (isAnalyzing != null && startGaitAnalysisButton != null) {
+                if (isAnalyzing) {
+                    startGaitAnalysisButton.setText("Stop Analysis");
+                    startGaitAnalysisButton.setBackgroundColor(Color.parseColor("#F44336")); // Red
+                } else {
+                    startGaitAnalysisButton.setText("Start Analysis");
+                    startGaitAnalysisButton.setBackgroundColor(getResources().getColor(R.color.primary, null));
+                }
+            }
         });
     }
 
-    private void updateBmiIndicator(float bmi) {
-        // Calculate position on the BMI scale (width percentage)
-        float position;
-
-        if (bmi < 18.5) {
-            // Underweight: 0-20%
-            position = (bmi / 18.5f) * 0.2f;
-        } else if (bmi < 25) {
-            // Normal: 20-40%
-            position = 0.2f + ((bmi - 18.5f) / 6.5f) * 0.2f;
-        } else if (bmi < 30) {
-            // Overweight: 40-60%
-            position = 0.4f + ((bmi - 25f) / 5f) * 0.2f;
-        } else if (bmi < 35) {
-            // Obese: 60-80%
-            position = 0.6f + ((bmi - 30f) / 5f) * 0.2f;
-        } else {
-            // Severely Obese: 80-100%
-            position = Math.min(0.8f + ((bmi - 35f) / 15f) * 0.2f, 1.0f);
+    private void updateGaitMetricsUI(GaitData gaitData) {
+        if (gaitCadenceValue != null) {
+            gaitCadenceValue.setText(String.format(Locale.getDefault(), "%.1f steps/min", gaitData.getCadence()));
         }
 
-        // Get the width of the container
-        ViewGroup container = (ViewGroup) bmiIndicator.getParent();
-        int containerWidth = container.getWidth();
+        if (gaitSymmetryValue != null) {
+            gaitSymmetryValue.setText(String.format(Locale.getDefault(), "%.1f%%", gaitData.getSymmetryIndex()));
+        }
 
-        // Set the position of the indicator
-        if (containerWidth > 0) {
-            int indicatorPosition = (int) (containerWidth * position) - (bmiIndicator.getWidth() / 2);
-            bmiIndicator.setX(indicatorPosition);
+        if (gaitVariabilityValue != null) {
+            gaitVariabilityValue.setText(String.format(Locale.getDefault(), "%.1f ms", gaitData.getStepVariability()));
+        }
+
+        if (gaitStepLengthValue != null) {
+            gaitStepLengthValue.setText(String.format(Locale.getDefault(), "%.2f m", gaitData.getStepLength()));
         }
     }
 
-    private void updateBmiDescription(String category) {
+    private void toggleGaitAnalysis() {
+        Boolean isAnalyzing = viewModel.isAnalyzing().getValue();
+
+        if (isAnalyzing != null && isAnalyzing) {
+            // Stop analysis
+            viewModel.stopGaitAnalysis(requireContext());
+
+            // Cancel timeout if it's running
+            if (analysisTimeoutRunnable != null) {
+                handler.removeCallbacks(analysisTimeoutRunnable);
+            }
+
+            Toast.makeText(requireContext(), "Gait analysis stopped", Toast.LENGTH_SHORT).show();
+        } else {
+            // Start analysis
+            viewModel.startGaitAnalysis(requireContext());
+
+            // Show instructions
+            Toast.makeText(requireContext(),
+                    "Please walk for at least 30 seconds at your normal pace",
+                    Toast.LENGTH_LONG).show();
+
+            // Set a timeout to automatically stop after 30 seconds
+            analysisTimeoutRunnable = () -> {
+                if (isAdded() && viewModel.isAnalyzing().getValue() == Boolean.TRUE) {
+                    viewModel.stopGaitAnalysis(requireContext());
+                    Toast.makeText(requireContext(), "Gait analysis complete!", Toast.LENGTH_SHORT).show();
+                }
+            };
+
+            handler.postDelayed(analysisTimeoutRunnable, 30000); // 30 seconds
+        }
+    }
+
+    private String getBmiCategory(float bmi) {
+        if (bmi < 18.5) {
+            return "Underweight";
+        } else if (bmi < 25) {
+            return "Normal";
+        } else if (bmi < 30) {
+            return "Overweight";
+        } else if (bmi < 35) {
+            return "Obese";
+        } else {
+            return "Severely Obese";
+        }
+    }
+
+    private int getBmiCategoryColor(String category) {
         switch (category) {
             case "Underweight":
-                bmiDescription.setText("Your BMI indicates you are underweight. Consider consulting with a healthcare provider about healthy weight gain strategies.");
-                break;
+                return Color.rgb(100, 181, 246); // Light blue
             case "Normal":
-                bmiDescription.setText("Your BMI is within the normal range. Maintaining a healthy weight can help prevent various health issues.");
-                break;
+                return Color.rgb(129, 199, 132); // Light green
             case "Overweight":
-                bmiDescription.setText("Your BMI indicates you are overweight. Consider incorporating more physical activity and a balanced diet.");
-                break;
+                return Color.rgb(255, 213, 79); // Yellow
             case "Obese":
-                bmiDescription.setText("Your BMI indicates obesity. This increases risk for health conditions. Consider consulting a healthcare provider.");
-                break;
+                return Color.rgb(255, 138, 101); // Orange
             case "Severely Obese":
-                bmiDescription.setText("Your BMI indicates severe obesity. This significantly increases health risks. Please consult with a healthcare provider.");
-                break;
+                return Color.rgb(229, 115, 115); // Red
             default:
-                bmiDescription.setText("BMI is a screening tool but not a diagnostic of body fatness or health.");
-                break;
+                return Color.BLACK;
+        }
+    }
+
+    private void updateBmiIndicator(float bmi) {
+        // Calculate position based on BMI value
+        // BMI scale typically goes from 15 to 40
+        float minBmi = 15f;
+        float maxBmi = 40f;
+        float range = maxBmi - minBmi;
+
+        // Clamp BMI value to our range
+        float clampedBmi = Math.max(minBmi, Math.min(maxBmi, bmi));
+
+        // Calculate percentage position
+        float percentage = (clampedBmi - minBmi) / range;
+
+        // Get parent width
+        View parent = (View) bmiIndicator.getParent();
+        int parentWidth = parent.getWidth();
+        if (parentWidth > 0) {
+            // Calculate X position
+            float xPosition = percentage * parentWidth;
+
+            // Set indicator position
+            bmiIndicator.setX(xPosition - bmiIndicator.getWidth() / 2);
         }
     }
 
@@ -214,174 +375,264 @@ public class HealthFragment extends Fragment {
         // Basic chart setup
         weightChart.getDescription().setEnabled(false);
         weightChart.setDrawGridBackground(false);
-        weightChart.setBackgroundColor(getResources().getColor(R.color.white, null));
-
-        // Enable interaction
+        // Enable scrolling and scaling
         weightChart.setTouchEnabled(true);
         weightChart.setDragEnabled(true);
         weightChart.setScaleEnabled(true);
         weightChart.setPinchZoom(true);
         weightChart.setDoubleTapToZoomEnabled(true);
+        weightChart.setHighlightPerDragEnabled(true);
+        weightChart.setBackgroundColor(Color.WHITE);
 
-        // Set visible range
-        weightChart.setVisibleXRangeMaximum(7); // Show 7 days at a time by default
-        weightChart.setExtraOffsets(10f, 10f, 10f, 10f); // Add padding
+        // Don't set a fixed visible range - let it be determined by the data
 
-        // Customize legend
-        weightChart.getLegend().setEnabled(false);
+        // Customize legend - hide it as requested
+        Legend legend = weightChart.getLegend();
+        legend.setEnabled(false);
 
         // X-axis setup
         XAxis xAxis = weightChart.getXAxis();
         xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
-        xAxis.setDrawGridLines(false);
-        xAxis.setGranularity(1f);
         xAxis.setTextSize(10f);
-        xAxis.setTextColor(getResources().getColor(R.color.primary, null));
+        xAxis.setTextColor(Color.BLACK);
+        xAxis.setDrawAxisLine(true);
+        xAxis.setDrawGridLines(false);
+        xAxis.setGranularity(6 * 24 * 60 * 60 * 1000f); // 6 days interval
+        xAxis.setLabelCount(5, true); // Force approximately 5 labels
         xAxis.setValueFormatter(new ValueFormatter() {
-            private final SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd", Locale.getDefault());
+            private final SimpleDateFormat dateFormat = new SimpleDateFormat("dd MMM", Locale.getDefault());
 
             @Override
             public String getFormattedValue(float value) {
-                // Convert timestamp to date
-                return dateFormat.format(new Date((long) value));
+                // Convert float to date string
+                long timestamp = (long) value;
+                return dateFormat.format(new Date(timestamp));
             }
         });
 
         // Y-axis setup
-        weightChart.getAxisLeft().setDrawGridLines(true);
-        weightChart.getAxisLeft().setGridColor(getResources().getColor(R.color.light_gray, null));
-        weightChart.getAxisLeft().setTextColor(getResources().getColor(R.color.primary, null));
-        weightChart.getAxisLeft().setTextSize(10f);
-        weightChart.getAxisLeft().setAxisMinimum(0f); // Start from 0
+        YAxis leftAxis = weightChart.getAxisLeft();
+        leftAxis.setPosition(YAxis.YAxisLabelPosition.OUTSIDE_CHART);
+        leftAxis.setTextColor(Color.BLACK);
+        leftAxis.setDrawGridLines(true);
+        leftAxis.setGranularityEnabled(true);
+        leftAxis.setGranularity(1f); // 1 kg intervals
+        leftAxis.setTextColor(Color.BLACK);
 
-        // Disable right Y-axis
-        weightChart.getAxisRight().setEnabled(false);
+        YAxis rightAxis = weightChart.getAxisRight();
+        rightAxis.setEnabled(false);
 
-        // Add empty state message
+        // If you have no data yet
         weightChart.setNoDataText("No weight data available");
-        weightChart.setNoDataTextColor(getResources().getColor(R.color.primary, null));
+        weightChart.setNoDataTextColor(Color.BLACK);
 
-        // Add marker view for better data point display
-        WeightMarkerView markerView = new WeightMarkerView(requireContext());
-        markerView.setChartView(weightChart);
-        weightChart.setMarker(markerView);
+        // Apply animation
+        weightChart.animateX(1000);
     }
 
-    private class WeightMarkerView extends com.github.mikephil.charting.components.MarkerView {
-        private final TextView tvContent;
-
-        public WeightMarkerView(Context context) {
-            super(context, R.layout.weight_marker_view);
-            tvContent = findViewById(R.id.tvContent);
-        }
-
-        @Override
-        public void refreshContent(Entry e, com.github.mikephil.charting.highlight.Highlight highlight) {
-            SimpleDateFormat dateFormat = new SimpleDateFormat("MMM dd, yyyy", Locale.getDefault());
-            String date = dateFormat.format(new Date((long) e.getX()));
-            tvContent.setText(String.format(Locale.getDefault(), "%s\n%.1f kg", date, e.getY()));
-            super.refreshContent(e, highlight);
-        }
-
-        @Override
-        public com.github.mikephil.charting.utils.MPPointF getOffset() {
-            return new com.github.mikephil.charting.utils.MPPointF(-(getWidth() / 2f), -getHeight());
-        }
-    }
-
-    private void updateWeightChart(List<Weight> weights) {
-        if (weights == null || weights.isEmpty()) {
+    private void updateWeightChart(List<Weight> weightEntries) {
+        if (weightEntries == null || weightEntries.isEmpty()) {
             weightChart.setNoDataText("No weight data available");
             weightChart.invalidate();
             return;
         }
 
-        // Sort weights by timestamp
-        List<Weight> sortedWeights = new ArrayList<>(weights);
-        Collections.sort(sortedWeights, (w1, w2) -> Long.compare(w1.getTimestamp(), w2.getTimestamp()));
+        // Sort entries by timestamp (oldest to newest)
+        List<Weight> sortedEntries = new ArrayList<>(weightEntries);
+        Collections.sort(sortedEntries, Comparator.comparingLong(Weight::getTimestamp));
 
-        List<Entry> entries = new ArrayList<>();
-        for (Weight weight : sortedWeights) {
-            entries.add(new Entry(weight.getTimestamp(), weight.getWeight()));
-        }
+        ArrayList<Entry> values = new ArrayList<>();
 
-        LineDataSet dataSet = new LineDataSet(entries, "Weight");
-
-        // Customize the line
-        dataSet.setColor(getResources().getColor(R.color.primary, null));
-        dataSet.setLineWidth(2f);
-
-        // Customize the circles
-        dataSet.setCircleColor(getResources().getColor(R.color.primary, null));
-        dataSet.setCircleHoleColor(getResources().getColor(R.color.white, null));
-        dataSet.setCircleRadius(4f);
-
-        // Customize the values
-        dataSet.setDrawValues(false); // Don't show values on points, use marker instead
-
-        // Add gradient fill
-        dataSet.setDrawFilled(true);
-        dataSet.setFillDrawable(getResources().getDrawable(R.drawable.chart_gradient_fill, null));
-
-        // Add animation
-        dataSet.setMode(LineDataSet.Mode.CUBIC_BEZIER); // Smooth curve
-
-        LineData lineData = new LineData(dataSet);
-        weightChart.setData(lineData);
-
-        // Calculate Y-axis range based on data
+        // Find min and max weight for Y-axis scaling
         float minWeight = Float.MAX_VALUE;
         float maxWeight = Float.MIN_VALUE;
-        for (Entry entry : entries) {
-            minWeight = Math.min(minWeight, entry.getY());
-            maxWeight = Math.max(maxWeight, entry.getY());
+
+        // Calculate weight change over the period
+        if (sortedEntries.size() >= 2) {
+            Weight oldest = sortedEntries.get(0);
+            Weight newest = sortedEntries.get(sortedEntries.size() - 1);
+            float change = newest.getWeight() - oldest.getWeight();
+
+            // Update weight change text
+            String prefix = change > 0 ? "+" : "";
+            weightChangeValue.setText(String.format(Locale.getDefault(), "%s%.1f kg", prefix, change));
+
+            // Set text color based on weight change
+            int color = change > 0 ? Color.RED : (change < 0 ? Color.GREEN : Color.BLACK);
+            weightChangeValue.setTextColor(color);
+        } else {
+            weightChangeValue.setText("--");
         }
 
-        // Set Y-axis range with some padding
-        float padding = (maxWeight - minWeight) * 0.2f;
-        weightChart.getAxisLeft().setAxisMinimum(Math.max(0, minWeight - padding));
-        weightChart.getAxisLeft().setAxisMaximum(maxWeight + padding);
+        // Convert your weight entries to chart entries
+        for (Weight entry : sortedEntries) {
+            float weight = entry.getWeight();
 
-        // Animate the chart
-        weightChart.animateX(1000);
+            // Update min/max
+            minWeight = Math.min(minWeight, weight);
+            maxWeight = Math.max(maxWeight, weight);
+
+            // X value is the timestamp, Y value is the weight
+            values.add(new Entry(entry.getTimestamp(), weight));
+        }
+
+        // Add some padding to min/max for better visualization
+        float padding = (maxWeight - minWeight) * 0.2f; // 20% padding
+        if (padding < 2) padding = 2; // Minimum 2kg padding
+
+        minWeight = Math.max(0, minWeight - padding); // Don't go below 0
+        maxWeight = maxWeight + padding;
+
+        // Update Y-axis limits
+        weightChart.getAxisLeft().setAxisMinimum(minWeight);
+        weightChart.getAxisLeft().setAxisMaximum(maxWeight);
+
+        LineDataSet set;
+
+        if (weightChart.getData() != null &&
+                weightChart.getData().getDataSetCount() > 0) {
+            set = (LineDataSet) weightChart.getData().getDataSetByIndex(0);
+            set.setValues(values);
+            weightChart.getData().notifyDataChanged();
+            weightChart.notifyDataSetChanged();
+        } else {
+            // Create a new dataset
+            set = new LineDataSet(values, "");  // Empty label as requested
+            set.setMode(LineDataSet.Mode.CUBIC_BEZIER);
+            set.setCubicIntensity(0.2f);
+            set.setDrawFilled(true);
+            set.setDrawCircles(true);
+            set.setCircleRadius(4f);
+            set.setCircleColor(getResources().getColor(R.color.primary, null));
+            set.setHighLightColor(Color.rgb(244, 117, 117));
+            set.setColor(getResources().getColor(R.color.primary, null));
+            set.setFillColor(getResources().getColor(R.color.primary, null));
+            set.setFillAlpha(50);
+            set.setDrawHorizontalHighlightIndicator(false);
+            set.setFillFormatter((dataSet, dataProvider) -> weightChart.getAxisLeft().getAxisMinimum());
+
+            // Create a data object with the data sets
+            LineData data = new LineData(set);
+            data.setValueTextSize(9f);
+            data.setDrawValues(true);
+            data.setValueFormatter(new ValueFormatter() {
+                @Override
+                public String getFormattedValue(float value) {
+                    return String.format(Locale.getDefault(), "%.1f", value);
+                }
+            });
+
+            // Set data
+            weightChart.setData(data);
+        }
 
         // Move to the latest entry
-        if (!entries.isEmpty()) {
-            weightChart.moveViewToX(entries.get(entries.size() - 1).getX());
+        if (values.size() > 0) {
+            weightChart.moveViewToX(values.get(values.size() - 1).getX());
         }
 
         weightChart.invalidate();
     }
 
     private void showAddWeightDialog() {
+        // Create dialog layout with weight input and date selection
         AlertDialog.Builder builder = new AlertDialog.Builder(requireContext());
-        builder.setTitle("Add Weight");
+        builder.setTitle("Ajouter un poids");
 
-        // Set up the input
-        final EditText input = new EditText(requireContext());
-        input.setHint("Weight in kg");
-        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        builder.setView(input);
+        // Inflate custom layout
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_add_weight, null);
+        builder.setView(dialogView);
+
+        // Get references to views
+        final EditText weightInput = dialogView.findViewById(R.id.weightInput);
+        final Button dateButton = dialogView.findViewById(R.id.dateButton);
+
+        // Set up date selection
+        final Calendar calendar = Calendar.getInstance();
+        final SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault());
+
+        // Set initial date text
+        dateButton.setText(dateFormat.format(calendar.getTime()));
+
+        // Set up date picker dialog
+        dateButton.setOnClickListener(v -> {
+            DatePickerDialog datePickerDialog = new DatePickerDialog(
+                    requireContext(),
+                    (view, year, month, dayOfMonth) -> {
+                        calendar.set(Calendar.YEAR, year);
+                        calendar.set(Calendar.MONTH, month);
+                        calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth);
+                        dateButton.setText(dateFormat.format(calendar.getTime()));
+                    },
+                    calendar.get(Calendar.YEAR),
+                    calendar.get(Calendar.MONTH),
+                    calendar.get(Calendar.DAY_OF_MONTH)
+            );
+
+            // Set max date to today (no future dates)
+            datePickerDialog.getDatePicker().setMaxDate(System.currentTimeMillis());
+
+            datePickerDialog.show();
+        });
 
         // Set up the buttons
-        builder.setPositiveButton("Save", (dialog, which) -> {
+        builder.setPositiveButton("Ajouter", (dialog, which) -> {
             try {
-                float weight = Float.parseFloat(input.getText().toString());
-                if (weight > 0 && weight < 500) {
-                    viewModel.addWeight(weight);
-                    Toast.makeText(requireContext(), "Weight saved", Toast.LENGTH_SHORT).show();
-
-                    // Also update in user preferences
-                    userPreferences.setWeight(weight);
+                float weight = Float.parseFloat(weightInput.getText().toString());
+                if (weight > 0) {
+                    // Create a new Weight object with selected date timestamp
+                    long timestamp = calendar.getTimeInMillis();
+                    Weight newWeight = new Weight(timestamp, weight);
+                    viewModel.addWeight(newWeight);
+                    Toast.makeText(requireContext(), "Poids ajouté", Toast.LENGTH_SHORT).show();
                 } else {
-                    Toast.makeText(requireContext(), "Please enter a valid weight (1-500 kg)", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(requireContext(), "Veuillez entrer un poids valide", Toast.LENGTH_SHORT).show();
                 }
             } catch (NumberFormatException e) {
-                Toast.makeText(requireContext(), "Please enter a valid number", Toast.LENGTH_SHORT).show();
+                Toast.makeText(requireContext(), "Veuillez entrer un nombre valide", Toast.LENGTH_SHORT).show();
             }
         });
-        builder.setNegativeButton("Cancel", null);
+
+        builder.setNegativeButton("Annuler", (dialog, which) -> dialog.cancel());
 
         builder.show();
+    }
+
+    private void showGaitMetricsExplanation() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(requireContext());
+        builder.setTitle("Understanding Your Gait Metrics");
+
+        // Create a custom view for the dialog
+        View customView = getLayoutInflater().inflate(R.layout.dialog_gait_explanation, null);
+        builder.setView(customView);
+
+        // Show the dialog
+        builder.setPositiveButton("Got it", null);
+        builder.show();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // Refresh data when fragment becomes visible
+        viewModel.refreshUserData();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        // Cancel any pending analysis timeout
+        if (analysisTimeoutRunnable != null) {
+            handler.removeCallbacks(analysisTimeoutRunnable);
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        // Unbind from the service to prevent leaks
+        if (viewModel != null) {
+            viewModel.unbindGaitService(requireContext());
+        }
     }
 }

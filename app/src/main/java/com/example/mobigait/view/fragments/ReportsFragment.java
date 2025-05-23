@@ -49,6 +49,7 @@ public class ReportsFragment extends Fragment {
     private Chip stepsChip;
     private Chip distanceChip;
     private Chip caloriesChip;
+    private TextView weeklyAverageStepsValue;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -68,6 +69,9 @@ public class ReportsFragment extends Fragment {
         setupChipListeners();
         setupObservers();
         setupChart();
+
+        // Observe weekly average steps
+        observeWeeklyAverageSteps();
     }
 
     private void initializeViews(View view) {
@@ -82,6 +86,7 @@ public class ReportsFragment extends Fragment {
         stepsChip = view.findViewById(R.id.stepsChip);
         distanceChip = view.findViewById(R.id.distanceChip);
         caloriesChip = view.findViewById(R.id.caloriesChip);
+        weeklyAverageStepsValue = view.findViewById(R.id.weeklyAverageStepsValue);
     }
 
     private void setupChipListeners() {
@@ -352,5 +357,18 @@ public class ReportsFragment extends Fragment {
         }
 
         barChart.invalidate();
+    }
+
+    /**
+     * Observe weekly average steps and update the UI
+     */
+    private void observeWeeklyAverageSteps() {
+        viewModel.getWeeklyAverageSteps().observe(getViewLifecycleOwner(), average -> {
+            if (average != null) {
+                weeklyAverageStepsValue.setText(String.format(Locale.getDefault(), "%.0f", average));
+            } else {
+                weeklyAverageStepsValue.setText("0");
+            }
+        });
     }
 }

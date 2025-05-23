@@ -1,12 +1,16 @@
 package com.example.mobigait.sensor;
 
+import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -20,14 +24,17 @@ import android.os.PowerManager;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.example.mobigait.MainActivity;
 import com.example.mobigait.R;
 import com.example.mobigait.model.Step;
 import com.example.mobigait.repository.StepRepository;
+import com.example.mobigait.utils.DateUtils;
 import com.example.mobigait.utils.UserPreferences;
 
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
 
@@ -39,6 +46,8 @@ public class StepCounterService extends Service implements SensorEventListener {
     public static final String ACTION_STOP_TRACKING = "com.example.mobigait.ACTION_STOP_TRACKING";
     public static final String ACTION_RESET_TRACKING = "com.example.mobigait.ACTION_RESET_TRACKING";
     public static final String ACTION_UPDATE_NOTIFICATION = "com.example.mobigait.ACTION_UPDATE_NOTIFICATION";
+    public static final String ACTION_MIDNIGHT_RESET = "com.example.mobigait.ACTION_MIDNIGHT_RESET";
+    public static final String ACTION_STEP_UPDATE = "com.example.mobigait.STEP_UPDATE";
 
     private static final String CHANNEL_ID = "StepCounterChannel";
     private static final int NOTIFICATION_ID = 1;
@@ -53,15 +62,40 @@ public class StepCounterService extends Service implements SensorEventListener {
     private boolean useAccelerometer = false;
     private int stepCount = 0;
     private int initialStepCount = -1;
+    private int pausedStepCount = 0;
     private long startTime = 0;
+    private long pausedTime = 0;
     private boolean isTracking = false;
     private boolean isPaused = false;
+    private int currentDay = -1; // Store the current day to detect day changes
 
     // For accelerometer-based step counting
     private static final float STEP_THRESHOLD = 12.0f;
     private static final int STEP_DELAY_NS = 250000000; // 250ms in nanoseconds
     private float lastMagnitude = 0;
     private long lastStepTime = 0;
+
+    // Handler for periodic checks
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable dayChangeChecker = new Runnable() {
+        @Override
+        public void run() {
+            checkForDayChange();
+            // Schedule next check in 1 minute
+            handler.postDelayed(this, 60 * 1000);
+        }
+    };
+
+    // Midnight reset receiver
+    private BroadcastReceiver midnightResetReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (ACTION_MIDNIGHT_RESET.equals(intent.getAction())) {
+                Log.d(TAG, "Received midnight reset broadcast");
+                resetForNewDay();
+            }
+        }
+    };
 
     // Binder for activity binding
     private final IBinder binder = new LocalBinder();
@@ -97,47 +131,170 @@ public class StepCounterService extends Service implements SensorEventListener {
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MobiGait:StepCounterWakeLock");
 
-        // Load the latest step count from the database
-        loadLatestStepCount();
+        // Store current day
+        Calendar calendar = Calendar.getInstance();
+        currentDay = calendar.get(Calendar.DAY_OF_YEAR);
+
+        // Register for midnight reset broadcasts
+        IntentFilter filter = new IntentFilter(ACTION_MIDNIGHT_RESET);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // For Android 13+ (API 33+)
+            registerReceiver(midnightResetReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            // For older Android versions
+            registerReceiver(midnightResetReceiver, filter);
+        }
+
+        // Load the latest step count from the database for today
+        loadTodayStepCount();
+
+        // Schedule midnight reset alarm
+        scheduleMidnightReset();
+
+        // Start day change checker
+        handler.post(dayChangeChecker);
     }
 
-    private void loadLatestStepCount() {
-        repository.getLatestStepSync(step -> {
-            if (step != null) {
-                Log.d(TAG, "Loaded latest step count: " + step.getStepCount());
-                stepCount = step.getStepCount();
-                startTime = System.currentTimeMillis() - step.getDuration();
+    private void loadTodayStepCount() {
+        long[] todayTimeRange = DateUtils.getTodayTimeRange();
+        repository.getStepsBetweenDatesSync(todayTimeRange[0], todayTimeRange[1], steps -> {
+            if (steps != null && !steps.isEmpty()) {
+                // Get the latest step record for today
+                Step latestStep = steps.get(0);
+                Log.d(TAG, "Loaded today's step count: " + latestStep.getStepCount());
+                stepCount = latestStep.getStepCount();
+                startTime = System.currentTimeMillis() - latestStep.getDuration();
             } else {
-                Log.d(TAG, "No previous step data found");
+                Log.d(TAG, "No step data found for today");
                 stepCount = 0;
-                startTime = System.currentTimeMillis();
                 startTime = System.currentTimeMillis();
             }
         });
     }
 
+    private void scheduleMidnightReset() {
+        // Set alarm for midnight
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager != null) {
+            // Calculate time until midnight
+            Calendar calendar = Calendar.getInstance();
+            calendar.set(Calendar.HOUR_OF_DAY, 0);
+            calendar.set(Calendar.MINUTE, 0);
+            calendar.set(Calendar.SECOND, 0);
+            calendar.add(Calendar.DAY_OF_YEAR, 1); // Next day at midnight
+
+            Intent intent = new Intent(ACTION_MIDNIGHT_RESET);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                    this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+            // Schedule the alarm
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), pendingIntent);
+            } else {
+                alarmManager.setExact(
+                        AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), pendingIntent);
+            }
+
+            Log.d(TAG, "Scheduled midnight reset alarm for: " +
+                    new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                            .format(calendar.getTime()));
+        }
+    }
+
+    private void checkForDayChange() {
+        Calendar calendar = Calendar.getInstance();
+        int day = calendar.get(Calendar.DAY_OF_YEAR);
+
+        if (currentDay != -1 && day != currentDay) {
+            Log.d(TAG, "Day change detected: " + currentDay + " -> " + day);
+            resetForNewDay();
+            currentDay = day;
+        }
+    }
+
+    private void resetForNewDay() {
+        Log.d(TAG, "Resetting for new day");
+
+        // Save current step data with end of day timestamp
+        if (stepCount > 0) {
+            Calendar calendar = Calendar.getInstance();
+            calendar.add(Calendar.DAY_OF_YEAR, -1); // Yesterday
+            calendar.set(Calendar.HOUR_OF_DAY, 23);
+            calendar.set(Calendar.MINUTE, 59);
+            calendar.set(Calendar.SECOND, 59);
+
+            // Calculate metrics
+            float height = userPreferences.getHeight();
+            float weight = userPreferences.getWeight();
+
+            // Default values if user data not available
+            if (height <= 0) height = 170;
+            if (weight <= 0) weight = 70;
+
+            double stepLength = 0.415 * height / 100;
+            double distance = stepCount * stepLength / 1000;
+            double calories = weight * distance;
+            long duration = calculateDurationFromSteps(stepCount);
+
+            // Save final data for the day
+            Step finalStep = new Step(calendar.getTimeInMillis(), stepCount, distance, calories, duration);
+            repository.insert(finalStep);
+
+            Log.d(TAG, "Saved final step data for previous day: " + stepCount + " steps");
+        }
+
+        // Reset counters for the new day
+        stepCount = 0;
+        initialStepCount = -1;
+        pausedStepCount = 0;
+        startTime = System.currentTimeMillis();
+        pausedTime = 0;
+
+        // Update notification
+        updateNotification();
+
+        // Broadcast that steps have been reset for a new day
+        Intent broadcastIntent = new Intent("com.example.mobigait.NEW_DAY_RESET");
+        sendBroadcast(broadcastIntent);
+
+        // Schedule next midnight reset
+        scheduleMidnightReset();
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null) {
+        if (intent != null && intent.getAction() != null) {
             String action = intent.getAction();
-            Log.d(TAG, "Service received action: " + action);
 
-            if (ACTION_START_TRACKING.equals(action)) {
-                startTracking();
-            } else if (ACTION_PAUSE_TRACKING.equals(action)) {
-                pauseTracking();
-            } else if (ACTION_RESUME_TRACKING.equals(action)) {
-                resumeTracking();
-            } else if (ACTION_STOP_TRACKING.equals(action)) {
-                stopTracking();
-            } else if (ACTION_RESET_TRACKING.equals(action)) {
-                resetSteps();
-            } else if (ACTION_UPDATE_NOTIFICATION.equals(action)) {
-                updateNotification();
+            switch (action) {
+                case ACTION_START_TRACKING:
+                    startTracking();
+                    isPaused = false;
+                    saveTrackingState();
+                    break;
+                case ACTION_PAUSE_TRACKING:
+                    isPaused = true;
+                    saveTrackingState();
+                    break;
+                case ACTION_RESUME_TRACKING:
+                    isPaused = false;
+                    saveTrackingState();
+                    break;
+                case ACTION_STOP_TRACKING:
+                    stopTracking();
+                    isPaused = true;
+                    saveTrackingState();
+                    break;
+                case ACTION_RESET_TRACKING:
+                    resetSteps();
+                    break;
+                case ACTION_UPDATE_NOTIFICATION:
+                    updateNotification();
+                    break;
             }
         }
 
-        // If service is killed, restart it
         return START_STICKY;
     }
 
@@ -150,6 +307,9 @@ public class StepCounterService extends Service implements SensorEventListener {
         Log.d(TAG, "Starting tracking");
         isTracking = true;
         isPaused = false;
+
+        // Check if we need to reset for a new day
+        checkForDayChange();
 
         // Start as foreground service with notification
         startForeground(NOTIFICATION_ID, createNotification());
@@ -173,6 +333,12 @@ public class StepCounterService extends Service implements SensorEventListener {
         Log.d(TAG, "Pausing tracking");
         isPaused = true;
 
+        // Store the current step count when pausing
+        pausedStepCount = stepCount;
+
+        // Store the elapsed time when pausing
+        pausedTime = System.currentTimeMillis() - startTime;
+
         // Unregister sensor listener to save battery
         sensorManager.unregisterListener(this);
         Log.d(TAG, "Unregistered sensor listeners");
@@ -189,6 +355,15 @@ public class StepCounterService extends Service implements SensorEventListener {
 
         Log.d(TAG, "Resuming tracking");
         isPaused = false;
+
+        // Check if we need to reset for a new day
+        checkForDayChange();
+
+        // Reset the initial step count to force re-initialization with the current sensor value
+        initialStepCount = -1;
+
+        // Update the start time based on the paused duration
+        startTime = System.currentTimeMillis() - pausedTime;
 
         // Register sensor listeners again
         registerSensorListeners();
@@ -234,20 +409,32 @@ public class StepCounterService extends Service implements SensorEventListener {
 
         // Stop foreground service
         stopForeground(true);
-        Log.d(TAG, "Stopped foreground service");
+        // Stop self
+        stopSelf();
     }
 
     private void resetSteps() {
         Log.d(TAG, "Resetting steps");
+
+        // Reset counters
         stepCount = 0;
         initialStepCount = -1;
+        pausedStepCount = 0;
         startTime = System.currentTimeMillis();
+        pausedTime = 0;
 
-        // Save reset data
+        // Update step data in database
         updateStepData();
 
         // Update notification
         updateNotification();
+
+        // Broadcast that steps have been reset
+        Intent broadcastIntent = new Intent("com.example.mobigait.STEPS_RESET");
+        sendBroadcast(broadcastIntent);
+
+        // Also broadcast the step update
+        broadcastStepUpdate();
     }
 
     @Override
@@ -278,38 +465,34 @@ public class StepCounterService extends Service implements SensorEventListener {
             // Using accelerometer for step detection
             detectStepWithAccelerometer(event);
         }
-
-        // Update notification periodically
-        if (stepCount % 10 == 0) { // Update every 10 steps to avoid too frequent updates
-            updateNotification();
-        }
     }
 
     private void detectStepWithAccelerometer(SensorEvent event) {
+        // Calculate magnitude of acceleration
         float x = event.values[0];
         float y = event.values[1];
         float z = event.values[2];
-
-        // Calculate magnitude of acceleration
-        float magnitude = (float) Math.sqrt(x*x + y*y + z*z);
+        float magnitude = (float) Math.sqrt(x * x + y * y + z * z);
 
         // Get current time in nanoseconds
-        long currentTime = System.nanoTime();
+        long now = event.timestamp;
 
-        // Detect step when acceleration crosses threshold with a peak
+        // Check if this is a step (peak in acceleration)
         if (magnitude > STEP_THRESHOLD && lastMagnitude <= STEP_THRESHOLD
-                && (currentTime - lastStepTime > STEP_DELAY_NS)) {
+                && now - lastStepTime > STEP_DELAY_NS) {
+            // Count as a step
             stepCount++;
-            lastStepTime = currentTime;
+            lastStepTime = now;
             Log.d(TAG, "Step detected with accelerometer, count: " + stepCount);
             updateStepData();
         }
 
+        // Save current magnitude for next comparison
         lastMagnitude = magnitude;
     }
 
     private void updateStepData() {
-        // Calculate metrics
+        // Calculate distance based on step count and user height
         float height = userPreferences.getHeight();
         float weight = userPreferences.getWeight();
 
@@ -317,16 +500,64 @@ public class StepCounterService extends Service implements SensorEventListener {
         if (height <= 0) height = 170;
         if (weight <= 0) weight = 70;
 
-        double stepLength = 0.415 * height / 100; // step length is 41.5% of height
-        double distance = stepCount * stepLength / 1000; // in kilometers
-        double calories = weight * distance; // Simple formula: weight * distance
-        long duration = System.currentTimeMillis() - startTime;
+        // Calculate step length based on height (approximate formula)
+        double stepLength = 0.415 * height / 100; // in meters
+
+        // Calculate distance in kilometers
+        double distance = stepCount * stepLength / 1000;
+
+        // Calculate calories burned (simple approximation)
+        double calories = weight * distance;
+
+        // Calculate duration based on steps (100 steps = 1 minute)
+        long duration = calculateDurationFromSteps(stepCount);
+
+        // Create Step object
+        Step step = new Step(System.currentTimeMillis(), stepCount, distance, calories, duration);
 
         // Save to database
-        Step step = new Step(System.currentTimeMillis(), stepCount, distance, calories, duration);
         repository.insert(step);
+
         Log.d(TAG, "Saved step data: count=" + stepCount + ", distance=" + distance +
                 ", calories=" + calories + ", duration=" + duration);
+
+        // Update notification
+        updateNotification();
+
+        // Broadcast step update
+        broadcastStepUpdate();
+    }
+
+    private long calculateDurationFromSteps(int steps) {
+        // Convert to float for more accurate division
+        float minutesFloat = (float) steps / 100.0f;
+        // Convert to milliseconds (1 minute = 60,000 ms)
+        return (long) (minutesFloat * 60 * 1000);
+    }
+
+    private void broadcastStepUpdate() {
+        Intent intent = new Intent(ACTION_STEP_UPDATE);
+        intent.putExtra("steps", stepCount);
+        intent.putExtra("distance", calculateDistance(stepCount));
+        intent.putExtra("calories", calculateCalories(stepCount));
+        intent.putExtra("duration", calculateDurationFromSteps(stepCount));
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+    }
+
+    private double calculateDistance(int steps) {
+        float height = userPreferences.getHeight();
+        if (height <= 0) height = 170;
+
+        double stepLength = 0.415 * height / 100; // in meters
+        return steps * stepLength / 1000; // in kilometers
+    }
+
+    private double calculateCalories(int steps) {
+        float weight = userPreferences.getWeight();
+        if (weight <= 0) weight = 70;
+
+        double distance = calculateDistance(steps);
+        return weight * distance;
     }
 
     private void createNotificationChannel() {
@@ -341,7 +572,7 @@ public class StepCounterService extends Service implements SensorEventListener {
 
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             notificationManager.createNotificationChannel(channel);
-            Log.d(TAG, "Created notification channel");
+            Log.d(TAG, "Notification channel created");
         }
     }
 
@@ -350,28 +581,53 @@ public class StepCounterService extends Service implements SensorEventListener {
         PendingIntent pendingIntent = PendingIntent.getActivity(
                 this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
 
-        String statusText = isPaused ? "Tracking paused" : "Tracking your steps";
-
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("MobiGait is " + statusText)
-                .setContentText("Steps: " + stepCount)
-                .setSmallIcon(R.drawable.ic_home)
+        // Create notification with current step count
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("MobiGait Step Counter")
+                .setContentText(getNotificationText())
+                .setSmallIcon(R.drawable.ic_footprint)
                 .setContentIntent(pendingIntent)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
-                .build();
+                .setOnlyAlertOnce(true);
+
+        // Add action buttons based on tracking state
+        if (isPaused) {
+            // Resume action
+            Intent resumeIntent = new Intent(this, StepCounterService.class);
+            resumeIntent.setAction(ACTION_RESUME_TRACKING);
+            PendingIntent resumePendingIntent = PendingIntent.getService(
+                    this, 1, resumeIntent, PendingIntent.FLAG_IMMUTABLE);
+            builder.addAction(R.drawable.ic_play, "Resume", resumePendingIntent);
+        } else {
+            // Pause action
+            Intent pauseIntent = new Intent(this, StepCounterService.class);
+            pauseIntent.setAction(ACTION_PAUSE_TRACKING);
+            PendingIntent pausePendingIntent = PendingIntent.getService(
+                    this, 2, pauseIntent, PendingIntent.FLAG_IMMUTABLE);
+            builder.addAction(R.drawable.ic_pause, "Pause", pausePendingIntent);
+        }
+
+        return builder.build();
+    }
+
+    private String getNotificationText() {
+        if (isPaused) {
+            return "Tracking paused: " + stepCount + " steps";
+        } else {
+            return "Tracking: " + stepCount + " steps";
+        }
     }
 
     private void updateNotification() {
         NotificationManager notificationManager =
                 (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-
         notificationManager.notify(NOTIFICATION_ID, createNotification());
         Log.d(TAG, "Updated notification with step count: " + stepCount);
     }
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
-        // Not needed for this implementation
+        // Not used
     }
 
     @Override
@@ -381,23 +637,63 @@ public class StepCounterService extends Service implements SensorEventListener {
 
     @Override
     public void onDestroy() {
-        Log.d(TAG, "Service being destroyed");
-        if (isTracking) {
-            stopTracking();
-        }
         super.onDestroy();
+
+        // Unregister sensor listener
+        sensorManager.unregisterListener(this);
+
+        // Release wake lock if held
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+        }
+
+        // Unregister broadcast receiver
+        try {
+            unregisterReceiver(midnightResetReceiver);
+        } catch (Exception e) {
+            Log.e(TAG, "Error unregistering receiver: " + e.getMessage());
+        }
+
+        // Remove handler callbacks
+        handler.removeCallbacks(dayChangeChecker);
+
+        Log.d(TAG, "Service destroyed");
     }
 
-    // Public methods for binding components
+    // Public methods for binding activities/fragments
     public int getStepCount() {
         return stepCount;
     }
 
+    public double getDistance() {
+        return calculateDistance(stepCount);
+    }
+
+    public double getCalories() {
+        return calculateCalories(stepCount);
+    }
+
+    public long getDuration() {
+        return calculateDurationFromSteps(stepCount);
+    }
+
     public boolean isTracking() {
-        return isTracking && !isPaused;
+        return isTracking;
     }
 
     public boolean isPaused() {
         return isPaused;
+    }
+
+    private void saveTrackingState() {
+        SharedPreferences prefs = getSharedPreferences("step_prefs", MODE_PRIVATE);
+        prefs.edit().putBoolean("is_paused", isPaused).apply();
+        Log.d(TAG, "Saved tracking state: isPaused=" + isPaused);
+    }
+
+    private void loadTrackingState() {
+        SharedPreferences prefs = getSharedPreferences("step_prefs", MODE_PRIVATE);
+        isPaused = prefs.getBoolean("is_paused", false);
+        Log.d(TAG, "Loaded tracking state: isPaused=" + isPaused);
     }
 }

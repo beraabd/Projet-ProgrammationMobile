@@ -1,0 +1,13 @@
+Je développe une application Android en Java avec Android Studio nommée MobiGait. C’est une application de suivi de la démarche humaine (gait analysis) à l’aide des capteurs du téléphone, et je veux qu’elle soit bien structurée, fluide et intuitive.
+
+L’objectif de l’application est de :
+
+Compter les pas de l’utilisateur à l’aide du capteur de pas ou accéléromètre
+
+Détecter d’éventuelles anomalies dans la démarche
+
+Analyser des métriques comme calories, distance, durée, IMC
+
+Offrir un historique complet avec des graphiques et un suivi santé
+
+ when user first installe the app 4 activity are displyed one next the other to ask for height weight age gender to store the data to use it later it was working befor but now it s no longer working let s start by fixing that  

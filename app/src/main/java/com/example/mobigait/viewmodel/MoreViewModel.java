@@ -2,6 +2,7 @@ package com.example.mobigait.viewmodel;
 
 import android.app.Application;
 import android.content.Context;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Environment;
 import android.util.Log;
@@ -14,6 +15,7 @@ import com.example.mobigait.model.Step;
 import com.example.mobigait.model.Weight;
 import com.example.mobigait.repository.StepRepository;
 import com.example.mobigait.repository.WeightRepository;
+import com.example.mobigait.sensor.StepCounterService;
 import com.example.mobigait.utils.UserPreferences;
 
 import java.io.File;
@@ -136,11 +138,13 @@ public class MoreViewModel extends AndroidViewModel {
                 // Clear weight data
                 weightRepository.deleteAllWeights();
 
-                // Reset all user preferences
-                userPreferences.resetAllPreferences();
+                // Reset step count in preferences
+                userPreferences.resetStepCount();
 
-                // Reset first time flag to true to trigger onboarding
-                userPreferences.setFirstTime(true);
+                // Reset tracking session if active
+                Intent serviceIntent = new Intent(getApplication(), StepCounterService.class);
+                serviceIntent.setAction(StepCounterService.ACTION_RESET_TRACKING);
+                getApplication().startService(serviceIntent);
 
                 // Callback on main thread
                 android.os.Handler mainHandler = new android.os.Handler(getApplication().getMainLooper());

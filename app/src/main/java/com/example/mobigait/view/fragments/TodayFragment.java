@@ -2,9 +2,12 @@ package com.example.mobigait.view.fragments;
 
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
+import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -23,6 +26,8 @@ import androidx.annotation.Nullable;
 import androidx.cardview.widget.CardView;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import androidx.navigation.Navigation;
 
 import com.example.mobigait.R;
 import com.example.mobigait.sensor.StepCounterService;
@@ -51,10 +56,16 @@ public class TodayFragment extends Fragment {
     private ImageButton pauseButton;
     private ImageButton dropdownButton;
     private CardView dropdownMenu;
-    private View successButton, historyButton, resetButton, deactivateButton;
+
+    // These might be null if not in your layout
+    private View successButton;
+    private View historyButton;
+    private View resetButton;
+    private View deactivateButton;
 
     private boolean isTracking = true; // Default to tracking
     private boolean isDropdownVisible = false;
+    private boolean isPaused = false;
     private DecimalFormat df = new DecimalFormat("#.##");
 
     // Service connection
@@ -70,12 +81,13 @@ public class TodayFragment extends Fragment {
 
             // Update UI with service state
             isTracking = stepService.isTracking();
+            isPaused = stepService.isPaused();
             updatePauseButtonState();
 
             // Update view model with current step count
             viewModel.updateSteps(stepService.getStepCount());
 
-            Log.d(TAG, "Service connected, tracking: " + isTracking + ", steps: " + stepService.getStepCount());
+            Log.d(TAG, "Service connected, tracking: " + isTracking + ", paused: " + isPaused + ", steps: " + stepService.getStepCount());
         }
 
         @Override
@@ -84,6 +96,49 @@ public class TodayFragment extends Fragment {
             Log.d(TAG, "Service disconnected");
         }
     };
+
+    // Broadcast receiver for step updates
+    private BroadcastReceiver stepUpdateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (StepCounterService.ACTION_STEP_UPDATE.equals(intent.getAction())) {
+                int steps = intent.getIntExtra("steps", 0);
+                double distance = intent.getDoubleExtra("distance", 0);
+                double calories = intent.getDoubleExtra("calories", 0);
+                long duration = intent.getLongExtra("duration", 0);
+                boolean isTracking = intent.getBooleanExtra("isTracking", true);
+                boolean isPaused = intent.getBooleanExtra("isPaused", false);
+
+                Log.d(TAG, "Received step update: " + steps + " steps, " + distance + " km, " +
+                        calories + " kcal, " + duration + " ms, tracking: " + isTracking +
+                        ", paused: " + isPaused);
+
+                // Update ViewModel
+                viewModel.updateSteps(steps);
+                viewModel.updateDistance(distance);
+                viewModel.updateCalories(calories);
+                viewModel.updateDuration(duration);
+                viewModel.setTracking(!isPaused);
+
+                // Update UI
+                TodayFragment.this.isTracking = isTracking && !isPaused;
+                TodayFragment.this.isPaused = isPaused;
+                updatePauseButtonState();
+            }
+        }
+    };
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        // Load saved state
+        loadTrackingState();
+    }
+
+    private void loadTrackingState() {
+        // This method would load tracking state from SharedPreferences if needed
+        // For now, we'll rely on the service state
+    }
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -111,8 +166,8 @@ public class TodayFragment extends Fragment {
         dropdownButton = view.findViewById(R.id.dropdownButton);
         dropdownMenu = view.findViewById(R.id.dropdownMenu);
 
-        // Find dropdown menu buttons
-        successButton = view.findViewById(R.id.successButton);
+        // Find dropdown menu buttons - these might be null if not in your layout
+
         historyButton = view.findViewById(R.id.historyButton);
         resetButton = view.findViewById(R.id.resetButton);
         deactivateButton = view.findViewById(R.id.deactivateButton);
@@ -132,8 +187,9 @@ public class TodayFragment extends Fragment {
         // Observe ViewModel data
         observeViewModel();
 
-        // Start tracking automatically
-        startTracking();
+        // Register broadcast receiver
+        IntentFilter filter = new IntentFilter(StepCounterService.ACTION_STEP_UPDATE);
+        LocalBroadcastManager.getInstance(requireContext()).registerReceiver(stepUpdateReceiver, filter);
 
         // Bind to the service
         bindStepService();
@@ -141,40 +197,87 @@ public class TodayFragment extends Fragment {
 
     private void setupClickListeners() {
         // Pause button
-        pauseButton.setOnClickListener(v -> {
-            if (isTracking) {
-                pauseTracking();
-            } else {
-                resumeTracking();
-            }
-        });
+        if (pauseButton != null) {
+            pauseButton.setOnClickListener(v -> {
+                if (isTracking) {
+                    pauseTracking();
+                } else {
+                    resumeTracking();
+                }
+            });
+        }
 
         // Dropdown button
-        dropdownButton.setOnClickListener(v -> toggleDropdownMenu());
+        if (dropdownButton != null) {
+            dropdownButton.setOnClickListener(v -> toggleDropdownMenu());
+        }
 
-        // Dropdown menu buttons
-        successButton.setOnClickListener(v -> {
-            Toast.makeText(requireContext(), "Success!", Toast.LENGTH_SHORT).show();
-            toggleDropdownMenu();
-        });
+        // Only set listeners if the views exist
+        if (successButton != null) {
+            successButton.setOnClickListener(v -> {
+                Toast.makeText(requireContext(), "Success!", Toast.LENGTH_SHORT).show();
+                toggleDropdownMenu();
+            });
+        }
 
-        historyButton.setOnClickListener(v -> {
-            Toast.makeText(requireContext(), "History", Toast.LENGTH_SHORT).show();
-            toggleDropdownMenu();
-        });
+        if (historyButton != null) {
+            historyButton.setOnClickListener(v -> {
+                try {
+                    // Replace the current fragment with ReportsFragment
+                    requireActivity().getSupportFragmentManager()
+                        .beginTransaction()
+                        .replace(R.id.fragment_container, new ReportsFragment())
+                        .addToBackStack(null)
+                        .commit();
 
-        resetButton.setOnClickListener(v -> {
-            resetSteps();
-            toggleDropdownMenu();
-        });
+                    toggleDropdownMenu();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error navigating to reports", e);
+                    Toast.makeText(requireContext(), "History view is not available", Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
 
-        deactivateButton.setOnClickListener(v -> {
-            deactivateTracking();
-            toggleDropdownMenu();
-        });
+        if (resetButton != null) {
+            resetButton.setOnClickListener(v -> {
+                showResetConfirmationDialog();
+                toggleDropdownMenu();
+            });
+        }
+
+        if (deactivateButton != null) {
+            deactivateButton.setOnClickListener(v -> {
+                showDeactivateConfirmationDialog();
+                toggleDropdownMenu();
+            });
+        }
+    }
+
+    private void showResetConfirmationDialog() {
+        new AlertDialog.Builder(requireContext())
+                .setTitle("Reset Steps")
+                .setMessage("Are you sure you want to reset your steps? This action cannot be undone.")
+                .setPositiveButton("Reset", (dialog, which) -> {
+                    resetSteps();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void showDeactivateConfirmationDialog() {
+        new AlertDialog.Builder(requireContext())
+                .setTitle("Deactivate Tracking")
+                .setMessage("Are you sure you want to deactivate step tracking? Your current progress will be saved.")
+                .setPositiveButton("Deactivate", (dialog, which) -> {
+                    deactivateTracking();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private void toggleDropdownMenu() {
+        if (dropdownMenu == null) return;
+
         if (isDropdownVisible) {
             // Hide menu with animation
             ObjectAnimator scaleX = ObjectAnimator.ofFloat(dropdownMenu, "scaleX", 1f, 0.5f);
@@ -189,9 +292,11 @@ public class TodayFragment extends Fragment {
             dropdownMenu.setVisibility(View.GONE);
 
             // Rotate dropdown button back
-            ObjectAnimator rotation = ObjectAnimator.ofFloat(dropdownButton, "rotation", 180f, 0f);
-            rotation.setDuration(300);
-            rotation.start();
+            if (dropdownButton != null) {
+                ObjectAnimator rotation = ObjectAnimator.ofFloat(dropdownButton, "rotation", 180f, 0f);
+                rotation.setDuration(300);
+                rotation.start();
+            }
 
             isDropdownVisible = false;
         } else {
@@ -212,9 +317,11 @@ public class TodayFragment extends Fragment {
             animSet.start();
 
             // Rotate dropdown button
-            ObjectAnimator rotation = ObjectAnimator.ofFloat(dropdownButton, "rotation", 0f, 180f);
-            rotation.setDuration(300);
-            rotation.start();
+            if (dropdownButton != null) {
+                ObjectAnimator rotation = ObjectAnimator.ofFloat(dropdownButton, "rotation", 0f, 180f);
+                rotation.setDuration(300);
+                rotation.start();
+            }
 
             isDropdownVisible = true;
         }
@@ -265,6 +372,7 @@ public class TodayFragment extends Fragment {
 
         viewModel.setTracking(true);
         isTracking = true;
+        isPaused = false;
         updatePauseButtonState();
 
         Log.d(TAG, "Started tracking");
@@ -278,6 +386,7 @@ public class TodayFragment extends Fragment {
 
             viewModel.setTracking(false);
             isTracking = false;
+            isPaused = true;
             updatePauseButtonState();
 
             Toast.makeText(requireContext(), "Tracking paused", Toast.LENGTH_SHORT).show();
@@ -293,6 +402,7 @@ public class TodayFragment extends Fragment {
 
             viewModel.setTracking(true);
             isTracking = true;
+            isPaused = false;
             updatePauseButtonState();
 
             Toast.makeText(requireContext(), "Tracking resumed", Toast.LENGTH_SHORT).show();
@@ -319,6 +429,7 @@ public class TodayFragment extends Fragment {
 
             viewModel.setTracking(false);
             isTracking = false;
+            isPaused = true;
             updatePauseButtonState();
 
             Toast.makeText(requireContext(), "Tracking deactivated", Toast.LENGTH_SHORT).show();
@@ -327,6 +438,8 @@ public class TodayFragment extends Fragment {
     }
 
     private void updatePauseButtonState() {
+        if (pauseButton == null) return;
+
         if (isTracking) {
             pauseButton.setImageResource(R.drawable.ic_pause);
         } else {
@@ -340,21 +453,36 @@ public class TodayFragment extends Fragment {
         if (!isBound) {
             bindStepService();
         }
+
+        // Register broadcast receiver
+        IntentFilter filter = new IntentFilter(StepCounterService.ACTION_STEP_UPDATE);
+        LocalBroadcastManager.getInstance(requireContext()).registerReceiver(stepUpdateReceiver, filter);
     }
 
     @Override
     public void onPause() {
         super.onPause();
         // Don't unbind here to keep the service running
+
+        // Unregister broadcast receiver to avoid leaks
+        try {
+            LocalBroadcastManager.getInstance(requireContext()).unregisterReceiver(stepUpdateReceiver);
+        } catch (Exception e) {
+            Log.e(TAG, "Error unregistering receiver", e);
+        }
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         if (isBound) {
-            requireContext().unbindService(serviceConnection);
-            isBound = false;
-            Log.d(TAG, "Unbinding from step service");
+            try {
+                requireContext().unbindService(serviceConnection);
+                isBound = false;
+                Log.d(TAG, "Unbinding from step service");
+            } catch (Exception e) {
+                Log.e(TAG, "Error unbinding service", e);
+            }
         }
     }
 }

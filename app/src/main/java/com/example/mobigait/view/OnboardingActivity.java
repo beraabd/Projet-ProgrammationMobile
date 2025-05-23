@@ -18,6 +18,8 @@ import androidx.viewpager2.widget.ViewPager2;
 
 import com.example.mobigait.MainActivity;
 import com.example.mobigait.R;
+import com.example.mobigait.model.Weight;
+import com.example.mobigait.repository.WeightRepository;
 import com.example.mobigait.utils.UserPreferences;
 
 import java.util.ArrayList;
@@ -193,6 +195,11 @@ public class OnboardingActivity extends AppCompatActivity {
         userPreferences.setWeight(weight);
         userPreferences.setAge(age);
         userPreferences.setFirstTime(false);
+
+        // Save initial weight to the weight database
+        Weight initialWeight = new Weight(System.currentTimeMillis(), weight);
+        WeightRepository weightRepository = new WeightRepository(getApplication());
+        weightRepository.insert(initialWeight);
     }
 
     private void startMainActivity() {

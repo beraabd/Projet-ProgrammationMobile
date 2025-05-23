@@ -46,31 +46,6 @@
             android:orientation="horizontal"
             android:padding="16dp">
 
-            <!-- Success button -->
-            <LinearLayout
-                android:id="@+id/successButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical">
-
-                <ImageView
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:background="@drawable/circle_background"
-                    android:padding="12dp"
-                    android:src="@drawable/ic_success"
-                    app:tint="@color/white" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Success"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
             <!-- History button -->
             <LinearLayout
                 android:id="@+id/historyButton"

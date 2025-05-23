@@ -6,7 +6,7 @@
     <!-- MobiGait color scheme -->
     <color name="primary">#4CAF50</color>  <!-- Green -->
     <color name="primary_dark">#388E3C</color>
-    <color name="primary_light">#C8E6C9</color>
+    <color name="primary_light">#80FF5722</color>  <!-- 50% transparent version of primary color -->
     <color name="accent">#03A9F4</color>  <!-- Blue -->
     <color name="accent_dark">#0288D1</color>
 

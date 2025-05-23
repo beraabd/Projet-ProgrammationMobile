@@ -46,4 +46,8 @@ public interface StepDao {
     // Add this method to your StepDao interface
     @Query("SELECT * FROM steps ORDER BY timestamp DESC LIMIT 1")
     Step getLatestStepSync();
+
+    // Add this new method to get steps between dates synchronously
+    @Query("SELECT * FROM steps WHERE timestamp BETWEEN :startTime AND :endTime ORDER BY timestamp DESC")
+    List<Step> getStepsBetweenDatesSync(long startTime, long endTime);
 }

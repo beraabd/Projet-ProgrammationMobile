@@ -7,6 +7,7 @@ import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Observer;
 import androidx.lifecycle.Transformations;
 
 import com.example.mobigait.model.Step;
@@ -176,5 +177,37 @@ public class ReportsViewModel extends AndroidViewModel {
 
     public int getStepGoal() {
         return userPreferences.getStepGoal();
+    }
+
+    /**
+     * Calculate and return the average steps per day for the current week
+     */
+    public LiveData<Double> getWeeklyAverageSteps() {
+        MutableLiveData<Double> weeklyAverage = new MutableLiveData<>();
+
+        // Get the time range for the current week
+        long[] weekTimeRange = DateUtils.getWeekTimeRange();
+        long startOfWeek = weekTimeRange[0];
+        long endOfWeek = weekTimeRange[1];
+
+        // Get the average steps between these dates
+        LiveData<Double> averageSteps = repository.getAverageStepsBetweenDates(startOfWeek, endOfWeek);
+
+        // Observe the average steps and update the weekly average
+        averageSteps.observeForever(new Observer<Double>() {
+            @Override
+            public void onChanged(Double average) {
+                if (average != null) {
+                    weeklyAverage.setValue(average);
+                } else {
+                    weeklyAverage.setValue(0.0);
+                }
+
+                // Remove the observer to prevent memory leaks
+                averageSteps.removeObserver(this);
+            }
+        });
+
+        return weeklyAverage;
     }
 }

@@ -112,10 +112,7 @@ public class TodayViewModel extends AndroidViewModel {
         saveCurrentData();
     }
 
-    public void updateDuration(long durationMs) {
-        currentDuration.setValue(durationMs);
-        saveCurrentData();
-    }
+
 
     private void saveCurrentData() {
         Integer steps = currentSteps.getValue();
@@ -190,5 +187,17 @@ public class TodayViewModel extends AndroidViewModel {
 
     public void getStepForDay(long startOfDay, long endOfDay, StepRepository.StepCallback callback) {
         repository.getStepForDay(startOfDay, endOfDay, callback);
+    }
+
+    public void updateDistance(double distance) {
+        currentDistance.setValue(distance);
+    }
+
+    public void updateCalories(double calories) {
+        currentCalories.setValue(calories);
+    }
+
+    public void updateDuration(long duration) {
+        currentDuration.setValue(duration);
     }
 }
