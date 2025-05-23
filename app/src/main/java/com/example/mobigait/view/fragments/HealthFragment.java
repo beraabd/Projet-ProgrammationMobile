@@ -2,7 +2,10 @@ package com.example.mobigait.view.fragments;
 
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
@@ -20,6 +23,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -49,28 +53,45 @@ import java.util.Locale;
 
 public class HealthFragment extends Fragment {
 
+    private static final String TAG = "HealthFragment";
+
     private HealthViewModel viewModel;
     private TextView bmiValue;
     private TextView bmiCategory;
     private View bmiIndicator;
     private TextView gaitStatusValue;
-    private TextView gaitCadenceValue;
-    private TextView gaitSymmetryValue;
-    private TextView gaitVariabilityValue;
-    private TextView gaitStepLengthValue;
     private TextView currentWeightValue;
     private TextView weightChangeValue;
     private LineChart weightChart;
     private Button addWeightButton;
     private Button startGaitAnalysisButton;
-    private Button deleteGaitHistoryButton;
-    private Button explainGaitMetricsButton;
-    private ImageButton gaitInfoButton;
-    private RecyclerView gaitHistoryRecyclerView;
-    private GaitHistoryAdapter gaitHistoryAdapter;
 
-    private Handler handler = new Handler(Looper.getMainLooper());
-    private Runnable analysisTimeoutRunnable;
+    // Gait metrics views
+    private TextView gaitCadenceValue;
+    private TextView gaitSymmetryValue;
+    private TextView gaitVariabilityValue;
+    private TextView gaitStepLengthValue;
+    private RecyclerView gaitHistoryRecyclerView;
+    private ImageButton gaitInfoButton;
+
+    // Broadcast receiver for gait analysis updates
+    private final BroadcastReceiver gaitAnalysisReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (GaitAnalysisService.ACTION_GAIT_ANALYSIS_COMPLETED.equals(intent.getAction())) {
+                // Update UI when gait analysis is completed
+                if (startGaitAnalysisButton != null) {
+                    startGaitAnalysisButton.setText("Start Analysis");
+                    startGaitAnalysisButton.setEnabled(true);
+                }
+
+                // Show success message
+                Toast.makeText(requireContext(), "Gait analysis completed!", Toast.LENGTH_SHORT).show();
+
+                // The ViewModel will automatically update with the latest gait data
+            }
+        }
+    };
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -86,23 +107,6 @@ public class HealthFragment extends Fragment {
         viewModel = new ViewModelProvider(this).get(HealthViewModel.class);
 
         // Initialize views
-        initializeViews(view);
-
-        // Setup chart
-        setupWeightChart();
-
-        // Setup recycler view for gait history
-        setupGaitHistoryRecyclerView();
-
-        // Setup button listeners
-        setupButtonListeners();
-
-        // Observe data
-        observeViewModel();
-    }
-
-    // Initialize all views
-    private void initializeViews(View view) {
         bmiValue = view.findViewById(R.id.bmiValue);
         bmiCategory = view.findViewById(R.id.bmiCategory);
         bmiIndicator = view.findViewById(R.id.bmiIndicator);
@@ -112,70 +116,138 @@ public class HealthFragment extends Fragment {
         weightChart = view.findViewById(R.id.weightChart);
         addWeightButton = view.findViewById(R.id.addWeightButton);
 
-        // Gait analysis related views
+        // Initialize gait metrics views
         gaitCadenceValue = view.findViewById(R.id.gaitCadenceValue);
         gaitSymmetryValue = view.findViewById(R.id.gaitSymmetryValue);
         gaitVariabilityValue = view.findViewById(R.id.gaitVariabilityValue);
         gaitStepLengthValue = view.findViewById(R.id.gaitStepLengthValue);
+
+        // Initialize gait analysis views
+        gaitHistoryRecyclerView = view.findViewById(R.id.gaitHistoryRecyclerView);
         startGaitAnalysisButton = view.findViewById(R.id.startGaitAnalysisButton);
         gaitInfoButton = view.findViewById(R.id.gaitInfoButton);
-        deleteGaitHistoryButton = view.findViewById(R.id.deleteGaitHistoryButton);
-        explainGaitMetricsButton = view.findViewById(R.id.explainGaitMetricsButton);
-        gaitHistoryRecyclerView = view.findViewById(R.id.gaitHistoryRecyclerView);
-    }
 
-    private void setupButtonListeners() {
-        // Weight button
-        addWeightButton.setOnClickListener(v -> {
-            showAddWeightDialog();
-        });
-
-        // Gait analysis button
-        if (startGaitAnalysisButton != null) {
-            startGaitAnalysisButton.setOnClickListener(v -> {
-                toggleGaitAnalysis();
-            });
-        }
-
-        // Gait info button
-        if (gaitInfoButton != null) {
-            gaitInfoButton.setOnClickListener(v -> {
+        // Initialize the explain gait metrics button
+        Button explainGaitMetricsButton = view.findViewById(R.id.explainGaitMetricsButton);
+        if (explainGaitMetricsButton != null) {
+            explainGaitMetricsButton.setOnClickListener(v -> {
                 showGaitMetricsExplanation();
             });
         }
 
-        // Delete gait history button
+        // Initialize the delete history button
+        Button deleteGaitHistoryButton = view.findViewById(R.id.deleteGaitHistoryButton);
         if (deleteGaitHistoryButton != null) {
             deleteGaitHistoryButton.setOnClickListener(v -> {
                 showDeleteGaitHistoryConfirmation();
             });
         }
 
-        // Explain gait metrics button
-        if (explainGaitMetricsButton != null) {
-            explainGaitMetricsButton.setOnClickListener(v -> {
+        // Setup chart
+        setupWeightChart();
+        // Setup button listeners
+        addWeightButton.setOnClickListener(v -> {
+            showAddWeightDialog();
+        });
+
+        if (startGaitAnalysisButton != null) {
+            startGaitAnalysisButton.setOnClickListener(v -> {
+                // Show instructions to the user
+                Toast.makeText(requireContext(),
+                    "Walk normally for 30 seconds. Analysis will complete automatically.",
+                    Toast.LENGTH_LONG).show();
+
+                // Start the gait analysis service
+                Intent serviceIntent = new Intent(requireContext(), GaitAnalysisService.class);
+                serviceIntent.setAction("START_ANALYSIS");
+                requireContext().startService(serviceIntent);
+
+                // Change button text to indicate analysis is in progress
+                startGaitAnalysisButton.setText("Analysis in progress...");
+                startGaitAnalysisButton.setEnabled(false);
+
+                // Re-enable the button after 30 seconds if no response is received
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (startGaitAnalysisButton.getText().toString().contains("progress")) {
+                        startGaitAnalysisButton.setText("Start Analysis");
+                        startGaitAnalysisButton.setEnabled(true);
+                        Toast.makeText(requireContext(), "Analysis timed out. Please try again.", Toast.LENGTH_SHORT).show();
+                    }
+                }, 30000); // 30 seconds
+            });
+        }
+
+        if (gaitInfoButton != null) {
+            gaitInfoButton.setOnClickListener(v -> {
                 showGaitMetricsExplanation();
             });
         }
-    }
 
-    private void showDeleteGaitHistoryConfirmation() {
-        new AlertDialog.Builder(requireContext())
-                .setTitle("Delete Gait History")
-                .setMessage("Are you sure you want to delete all gait analysis history? This action cannot be undone.")
-                .setPositiveButton("Delete", (dialog, which) -> {
-                    viewModel.deleteAllGaitHistory();
-                    Toast.makeText(requireContext(), "Gait history deleted", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-    }
-
-    private void setupGaitHistoryRecyclerView() {
+        // Setup RecyclerView for gait history
         if (gaitHistoryRecyclerView != null) {
             gaitHistoryRecyclerView.setLayoutManager(new LinearLayoutManager(requireContext()));
-            gaitHistoryAdapter = new GaitHistoryAdapter();
-            gaitHistoryRecyclerView.setAdapter(gaitHistoryAdapter);
+            GaitHistoryAdapter adapter = new GaitHistoryAdapter();
+            gaitHistoryRecyclerView.setAdapter(adapter);
+
+            // Observe gait history data
+            viewModel.getRecentGaitData(5).observe(getViewLifecycleOwner(), gaitDataList -> {
+                if (gaitDataList != null) {
+                    adapter.submitList(gaitDataList);
+
+                    // Show a toast if no data is available
+                    if (gaitDataList.isEmpty() && startGaitAnalysisButton != null) {
+                        // Make sure the button is visible and enabled
+                        startGaitAnalysisButton.setEnabled(true);
+                        startGaitAnalysisButton.setText("Start Analysis");
+                    }
+                }
+            });
+
+            // Set click listener for detailed view
+            adapter.setOnGaitItemClickListener(gaitData -> {
+                // Show detailed gait data dialog
+                showGaitDetailDialog(gaitData);
+            });
+        }
+
+        // Register broadcast receiver for gait analysis updates
+        IntentFilter filter = new IntentFilter(GaitAnalysisService.ACTION_GAIT_ANALYSIS_COMPLETED);
+        LocalBroadcastManager.getInstance(requireContext()).registerReceiver(gaitAnalysisReceiver, filter);
+
+        // Observe data
+        observeViewModel();
+    }
+
+    private void updateGaitMetrics(String status, float cadence, double variability, double symmetry, float stepLength) {
+        if (gaitStatusValue != null) {
+            gaitStatusValue.setText(status);
+
+            // Set color based on status
+            int color;
+            if ("Normal".equals(status)) {
+                color = getResources().getColor(R.color.primary, null);
+                gaitStatusValue.setText(status + " ✅");
+            } else {
+                color = Color.RED;
+                gaitStatusValue.setText(status + " ⚠️");
+            }
+            gaitStatusValue.setTextColor(color);
+        }
+
+        if (gaitCadenceValue != null) {
+            gaitCadenceValue.setText(String.format(Locale.getDefault(), "%.1f steps/min", cadence));
+        }
+
+        if (gaitSymmetryValue != null) {
+            gaitSymmetryValue.setText(String.format(Locale.getDefault(), "%.1f%%", symmetry));
+        }
+
+        if (gaitVariabilityValue != null) {
+            gaitVariabilityValue.setText(String.format(Locale.getDefault(), "%.1f ms", variability));
+        }
+
+        if (gaitStepLengthValue != null) {
+            gaitStepLengthValue.setText(String.format(Locale.getDefault(), "%.2f m", stepLength));
         }
     }
 
@@ -206,20 +278,6 @@ public class HealthFragment extends Fragment {
         viewModel.getGaitStatus().observe(getViewLifecycleOwner(), status -> {
             if (status != null) {
                 gaitStatusValue.setText(status);
-
-                // Set color based on status
-                int statusColor;
-                if (status.equals("Normal")) {
-                    statusColor = Color.parseColor("#4CAF50"); // Green
-                    gaitStatusValue.setText(status + " ✅");
-                } else if (status.equals("Not analyzed")) {
-                    statusColor = Color.GRAY;
-                    gaitStatusValue.setText(status);
-                } else {
-                    statusColor = Color.parseColor("#F44336"); // Red
-                    gaitStatusValue.setText(status + " ⚠️");
-                }
-                gaitStatusValue.setTextColor(statusColor);
             }
         });
 
@@ -235,84 +293,30 @@ public class HealthFragment extends Fragment {
         // Observe weight history for chart
         viewModel.getWeightHistory().observe(getViewLifecycleOwner(), this::updateWeightChart);
 
-        // Observe latest gait data
-        viewModel.getLatestGaitData().observe(getViewLifecycleOwner(), gaitData -> {
-            if (gaitData != null) {
-                updateGaitMetricsUI(gaitData);
+        // Observe gait metrics
+        viewModel.getGaitCadence().observe(getViewLifecycleOwner(), cadence -> {
+            if (cadence != null && gaitCadenceValue != null) {
+                gaitCadenceValue.setText(String.format(Locale.getDefault(), "%.1f steps/min", cadence));
             }
         });
 
-        // Observe gait history
-        viewModel.getRecentGaitData().observe(getViewLifecycleOwner(), gaitDataList -> {
-            if (gaitDataList != null && gaitHistoryAdapter != null) {
-                gaitHistoryAdapter.submitList(gaitDataList);
+        viewModel.getGaitSymmetry().observe(getViewLifecycleOwner(), symmetry -> {
+            if (symmetry != null && gaitSymmetryValue != null) {
+                gaitSymmetryValue.setText(String.format(Locale.getDefault(), "%.1f%%", symmetry));
             }
         });
 
-        // Observe analyzing state
-        viewModel.isAnalyzing().observe(getViewLifecycleOwner(), isAnalyzing -> {
-            if (isAnalyzing != null && startGaitAnalysisButton != null) {
-                if (isAnalyzing) {
-                    startGaitAnalysisButton.setText("Stop Analysis");
-                    startGaitAnalysisButton.setBackgroundColor(Color.parseColor("#F44336")); // Red
-                } else {
-                    startGaitAnalysisButton.setText("Start Analysis");
-                    startGaitAnalysisButton.setBackgroundColor(getResources().getColor(R.color.primary, null));
-                }
+        viewModel.getGaitVariability().observe(getViewLifecycleOwner(), variability -> {
+            if (variability != null && gaitVariabilityValue != null) {
+                gaitVariabilityValue.setText(String.format(Locale.getDefault(), "%.1f ms", variability));
             }
         });
-    }
 
-    private void updateGaitMetricsUI(GaitData gaitData) {
-        if (gaitCadenceValue != null) {
-            gaitCadenceValue.setText(String.format(Locale.getDefault(), "%.1f steps/min", gaitData.getCadence()));
-        }
-
-        if (gaitSymmetryValue != null) {
-            gaitSymmetryValue.setText(String.format(Locale.getDefault(), "%.1f%%", gaitData.getSymmetryIndex()));
-        }
-
-        if (gaitVariabilityValue != null) {
-            gaitVariabilityValue.setText(String.format(Locale.getDefault(), "%.1f ms", gaitData.getStepVariability()));
-        }
-
-        if (gaitStepLengthValue != null) {
-            gaitStepLengthValue.setText(String.format(Locale.getDefault(), "%.2f m", gaitData.getStepLength()));
-        }
-    }
-
-    private void toggleGaitAnalysis() {
-        Boolean isAnalyzing = viewModel.isAnalyzing().getValue();
-
-        if (isAnalyzing != null && isAnalyzing) {
-            // Stop analysis
-            viewModel.stopGaitAnalysis(requireContext());
-
-            // Cancel timeout if it's running
-            if (analysisTimeoutRunnable != null) {
-                handler.removeCallbacks(analysisTimeoutRunnable);
+        viewModel.getGaitStepLength().observe(getViewLifecycleOwner(), stepLength -> {
+            if (stepLength != null && gaitStepLengthValue != null) {
+                gaitStepLengthValue.setText(String.format(Locale.getDefault(), "%.2f m", stepLength));
             }
-
-            Toast.makeText(requireContext(), "Gait analysis stopped", Toast.LENGTH_SHORT).show();
-        } else {
-            // Start analysis
-            viewModel.startGaitAnalysis(requireContext());
-
-            // Show instructions
-            Toast.makeText(requireContext(),
-                    "Please walk for at least 30 seconds at your normal pace",
-                    Toast.LENGTH_LONG).show();
-
-            // Set a timeout to automatically stop after 30 seconds
-            analysisTimeoutRunnable = () -> {
-                if (isAdded() && viewModel.isAnalyzing().getValue() == Boolean.TRUE) {
-                    viewModel.stopGaitAnalysis(requireContext());
-                    Toast.makeText(requireContext(), "Gait analysis complete!", Toast.LENGTH_SHORT).show();
-                }
-            };
-
-            handler.postDelayed(analysisTimeoutRunnable, 30000); // 30 seconds
-        }
+        });
     }
 
     private String getBmiCategory(float bmi) {
@@ -375,6 +379,7 @@ public class HealthFragment extends Fragment {
         // Basic chart setup
         weightChart.getDescription().setEnabled(false);
         weightChart.setDrawGridBackground(false);
+
         // Enable scrolling and scaling
         weightChart.setTouchEnabled(true);
         weightChart.setDragEnabled(true);
@@ -552,6 +557,7 @@ public class HealthFragment extends Fragment {
         final SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault());
 
         // Set initial date text
+        // Set initial date text
         dateButton.setText(dateFormat.format(calendar.getTime()));
 
         // Set up date picker dialog
@@ -600,39 +606,109 @@ public class HealthFragment extends Fragment {
 
     private void showGaitMetricsExplanation() {
         AlertDialog.Builder builder = new AlertDialog.Builder(requireContext());
-        builder.setTitle("Understanding Your Gait Metrics");
+        builder.setTitle("Understanding Gait Metrics");
 
-        // Create a custom view for the dialog
-        View customView = getLayoutInflater().inflate(R.layout.dialog_gait_explanation, null);
-        builder.setView(customView);
+        String message =
+                "Cadence: Number of steps per minute. Normal range is 90-120 steps/min.\n\n" +
+                        "Symmetry: How similar your left and right steps are. Lower percentage is better, with 0% being perfect symmetry.\n\n" +
+                        "Variability: How consistent your step timing is. Lower values indicate more consistent steps.\n\n" +
+                        "Step Length: Average length of each step. Typically 0.5-0.8m for adults.";
 
-        // Show the dialog
-        builder.setPositiveButton("Got it", null);
+        builder.setMessage(message);
+        builder.setPositiveButton("OK", null);
         builder.show();
+    }
+
+    private void showGaitDetailDialog(GaitData gaitData) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(requireContext());
+        builder.setTitle("Gait Analysis Details");
+
+        // Create a formatted message with all the gait metrics
+        SimpleDateFormat dateFormat = new SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault());
+        String date = dateFormat.format(new Date(gaitData.getTimestamp()));
+
+        String message = "Date: " + date + "\n\n" +
+                         "Status: " + gaitData.getStatus() + "\n\n" +
+                         "Cadence: " + String.format(Locale.getDefault(), "%.1f steps/min", gaitData.getCadence()) + "\n" +
+                         "Symmetry Index: " + String.format(Locale.getDefault(), "%.1f%%", gaitData.getSymmetryIndex()) + "\n" +
+                         "Step Variability: " + String.format(Locale.getDefault(), "%.1f ms", gaitData.getStepVariability()) + "\n" +
+                         "Step Length: " + String.format(Locale.getDefault(), "%.2f m", gaitData.getStepLength()) + "\n\n" +
+                         "Interpretation:\n" + getGaitInterpretation(gaitData);
+
+        builder.setMessage(message);
+        builder.setPositiveButton("OK", null);
+        builder.show();
+    }
+
+    private String getGaitInterpretation(GaitData gaitData) {
+        StringBuilder interpretation = new StringBuilder();
+
+        // Cadence interpretation
+        float cadence = gaitData.getCadence();
+        if (cadence < 90) {
+            interpretation.append("• Low cadence may indicate reduced mobility or fatigue.\n");
+        } else if (cadence > 130) {
+            interpretation.append("• High cadence may indicate shorter steps or rushing.\n");
+        } else {
+            interpretation.append("• Cadence is within normal range.\n");
+        }
+
+        // Symmetry interpretation
+        double symmetry = gaitData.getSymmetryIndex();
+        if (symmetry > 10) {
+            interpretation.append("• Asymmetric gait may indicate favoring one side.\n");
+        } else {
+            interpretation.append("• Good symmetry between left and right steps.\n");
+        }
+
+        // Variability interpretation
+        double variability = gaitData.getStepVariability();
+        if (variability > 100) {
+            interpretation.append("• High step variability may indicate inconsistent walking pattern.\n");
+        } else {
+            interpretation.append("• Consistent step timing indicates stable gait.\n");
+        }
+
+        return interpretation.toString();
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        // Refresh data when fragment becomes visible
-        viewModel.refreshUserData();
+        // Register for gait analysis updates
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(GaitAnalysisService.ACTION_GAIT_ANALYSIS_COMPLETED);
+        LocalBroadcastManager.getInstance(requireContext())
+                .registerReceiver(gaitAnalysisReceiver, filter);
     }
 
     @Override
     public void onPause() {
         super.onPause();
-        // Cancel any pending analysis timeout
-        if (analysisTimeoutRunnable != null) {
-            handler.removeCallbacks(analysisTimeoutRunnable);
+        // Unregister receiver to prevent leaks
+        try {
+            LocalBroadcastManager.getInstance(requireContext())
+                    .unregisterReceiver(gaitAnalysisReceiver);
+        } catch (Exception e) {
+            // Ignore if receiver wasn't registered
         }
     }
 
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        // Unbind from the service to prevent leaks
-        if (viewModel != null) {
-            viewModel.unbindGaitService(requireContext());
-        }
+    /**
+     * Shows a confirmation dialog before deleting gait history
+     */
+    private void showDeleteGaitHistoryConfirmation() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(requireContext());
+        builder.setTitle("Delete Gait History");
+        builder.setMessage("Are you sure you want to delete all gait analysis history? This action cannot be undone.");
+
+        builder.setPositiveButton("Delete", (dialog, which) -> {
+            // Call ViewModel method to delete gait history
+            viewModel.deleteAllGaitData();
+            Toast.makeText(requireContext(), "Gait history deleted", Toast.LENGTH_SHORT).show();
+        });
+
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
     }
 }

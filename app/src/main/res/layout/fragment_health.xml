@@ -469,6 +469,19 @@
                     app:layout_constraintTop_toBottomOf="@+id/gaitAnalysisDescription"
                     app:layout_constraintStart_toStartOf="parent" />
 
+                <TextView
+                    android:id="@+id/noGaitDataText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="No gait analysis data available yet. Start an analysis to see results."
+                    android:textStyle="italic"
+                    android:gravity="center"
+                    android:padding="16dp"
+                    android:visibility="visible"
+                    app:layout_constraintTop_toBottomOf="@+id/gaitHistoryTitle"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent" />
+
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/gaitHistoryRecyclerView"
                     android:layout_width="match_parent"

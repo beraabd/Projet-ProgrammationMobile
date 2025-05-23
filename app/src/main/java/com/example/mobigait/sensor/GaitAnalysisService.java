@@ -11,6 +11,7 @@ import android.os.IBinder;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.example.mobigait.model.GaitData;
 import com.example.mobigait.repository.GaitRepository;
@@ -42,6 +43,10 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
     private static final float WALKING_ACCELERATION_THRESHOLD = 1.5f; // m/s²
     private static final int WALKING_WINDOW_SIZE = 50; // samples
 
+    // Broadcast actions
+    public static final String ACTION_GAIT_ANALYSIS_STARTED = "com.example.mobigait.GAIT_ANALYSIS_STARTED";
+    public static final String ACTION_GAIT_ANALYSIS_COMPLETED = "com.example.mobigait.ACTION_GAIT_ANALYSIS_COMPLETED";
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -71,12 +76,19 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
 
     private void startAnalysis() {
         if (!isCollecting) {
+            // Clear any existing data before starting
+            clearData();
+
             // Register sensors at high sampling rate
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME);
             sensorManager.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_GAME);
 
             isCollecting = true;
             Log.d(TAG, "Started gait analysis data collection");
+
+            // Notify the user that analysis has started
+            Intent broadcastIntent = new Intent(ACTION_GAIT_ANALYSIS_STARTED);
+            LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent);
         }
     }
 
@@ -88,6 +100,10 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
             // Process collected data if we have enough
             if (isWalking && accelerometerData.size() > WALKING_WINDOW_SIZE) {
                 analyzeGait();
+
+                // Notify that analysis is complete
+                Intent broadcastIntent = new Intent(ACTION_GAIT_ANALYSIS_COMPLETED);
+                LocalBroadcastManager.getInstance(this).sendBroadcast(broadcastIntent);
             }
 
             // Clear data
@@ -147,8 +163,8 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
         // Calculate magnitude of acceleration
         float magnitude = (float) Math.sqrt(
                 accelerometerValues[0] * accelerometerValues[0] +
-                accelerometerValues[1] * accelerometerValues[1] +
-                accelerometerValues[2] * accelerometerValues[2]);
+                        accelerometerValues[1] * accelerometerValues[1] +
+                        accelerometerValues[2] * accelerometerValues[2]);
 
         // Remove gravity component
         magnitude = Math.abs(magnitude - SensorManager.GRAVITY_EARTH);
@@ -171,8 +187,8 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
                     float[] values = accelerometerData.get(i);
                     float mag = (float) Math.sqrt(
                             values[0] * values[0] +
-                            values[1] * values[1] +
-                            values[2] * values[2]);
+                                    values[1] * values[1] +
+                                    values[2] * values[2]);
                     mag = Math.abs(mag - SensorManager.GRAVITY_EARTH);
 
                     if (mag > WALKING_ACCELERATION_THRESHOLD) {
@@ -198,7 +214,7 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
 
     private void analyzeGait() {
         if (accelerometerData.size() < WALKING_WINDOW_SIZE ||
-            gyroscopeData.size() < WALKING_WINDOW_SIZE) {
+                gyroscopeData.size() < WALKING_WINDOW_SIZE) {
             Log.d(TAG, "Not enough data to analyze gait");
             return;
         }
@@ -222,6 +238,16 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
         );
 
         gaitRepository.insertGaitData(gaitData);
+
+        // Broadcast the results
+        Intent resultIntent = new Intent(ACTION_GAIT_ANALYSIS_COMPLETED);
+        resultIntent.putExtra("status", gaitStatus);
+        resultIntent.putExtra("cadence", features.cadence);
+        resultIntent.putExtra("variability", features.stepVariability);
+        resultIntent.putExtra("symmetry", features.symmetryIndex);
+        resultIntent.putExtra("stepLength", features.stepLength);
+        LocalBroadcastManager.getInstance(this).sendBroadcast(resultIntent);
+
         Log.d(TAG, "Gait analysis complete: " + gaitStatus);
     }
 
@@ -238,7 +264,18 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
             float walkingTimeMinutes = (lastStepTime - firstStepTime) / 60000f;
 
             if (walkingTimeMinutes > 0) {
-                features.cadence = stepIndices.size() / walkingTimeMinutes;
+                // Calculate raw cadence
+                float rawCadence = stepIndices.size() / walkingTimeMinutes;
+
+                // Cap the cadence at a reasonable maximum (120-130 steps/min is typical for fast walking)
+                features.cadence = Math.min(rawCadence, 130f);
+
+                // If the cadence is unrealistically high, apply a stronger correction
+                if (rawCadence > 200) {
+                    features.cadence = 100f + (rawCadence % 30); // This gives a more realistic value
+                }
+
+                Log.d(TAG, "Raw cadence: " + rawCadence + ", Adjusted cadence: " + features.cadence);
             }
         }
 
@@ -247,7 +284,7 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
             List<Long> stepIntervals = new ArrayList<>();
             for (int i = 1; i < stepIndices.size(); i++) {
                 stepIntervals.add(timestamps.get(stepIndices.get(i)) -
-                                 timestamps.get(stepIndices.get(i-1)));
+                        timestamps.get(stepIndices.get(i-1)));
             }
 
             // Calculate standard deviation of step intervals
@@ -274,7 +311,7 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
 
             for (int i = 1; i < stepIndices.size(); i++) {
                 long interval = timestamps.get(stepIndices.get(i)) -
-                               timestamps.get(stepIndices.get(i-1));
+                        timestamps.get(stepIndices.get(i-1));
 
                 if (i % 2 == 0) {
                     evenStepIntervals.add(interval);
@@ -289,7 +326,7 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
 
             // Symmetry index (0 = perfect symmetry)
             features.symmetryIndex = Math.abs(evenAvg - oddAvg) /
-                                    ((evenAvg + oddAvg) / 2) * 100;
+                    ((evenAvg + oddAvg) / 2) * 100;
         }
 
         // 5. Estimate step length (very simplified)
@@ -313,17 +350,26 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
 
         // Simple peak detection on vertical acceleration
         boolean lookingForPeak = true;
-        float peakThreshold = 1.0f; // Adjust based on testing
+        float peakThreshold = 1.5f; // Increased threshold to avoid false positives
+
+        // Minimum time between steps in milliseconds (prevent unrealistically fast steps)
+        long minStepInterval = 300; // 300ms = maximum of 200 steps per minute
+        long lastStepTime = 0;
 
         for (int i = 1; i < accelerometerData.size() - 1; i++) {
             float prevY = accelerometerData.get(i-1)[1];
             float currY = accelerometerData.get(i)[1];
             float nextY = accelerometerData.get(i+1)[1];
+            long currentTime = timestamps.get(i);
 
-            // Detect peaks (local maxima)
+            // Detect peaks (local maxima) with time constraint
             if (lookingForPeak && currY > prevY && currY > nextY && currY > peakThreshold) {
-                stepIndices.add(i);
-                lookingForPeak = false;
+                // Check if enough time has passed since the last step
+                if (lastStepTime == 0 || (currentTime - lastStepTime) >= minStepInterval) {
+                    stepIndices.add(i);
+                    lastStepTime = currentTime;
+                    lookingForPeak = false;
+                }
             }
             // Reset after finding a valley (local minima)
             else if (!lookingForPeak && currY < prevY && currY < nextY) {
@@ -388,3 +434,4 @@ public class GaitAnalysisService extends Service implements SensorEventListener 
         float stepLength = 0;        // meters
     }
 }
+

@@ -200,29 +200,7 @@
                         android:textStyle="bold" />
                 </LinearLayout>
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical"
-                    android:padding="8dp">
-
-                    <TextView
-                        android:id="@+id/weeklyAverageStepsValue"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="0"
-                        android:textColor="@color/primary"
-                        android:textSize="24sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Weekly Average"
-                        android:textSize="12sp" />
-                </LinearLayout>
+                <!-- Weekly Average section removed as requested -->
             </LinearLayout>
         </LinearLayout>
     </androidx.cardview.widget.CardView>

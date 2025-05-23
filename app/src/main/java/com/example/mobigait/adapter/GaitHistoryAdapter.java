@@ -21,6 +21,7 @@ import java.util.Locale;
 public class GaitHistoryAdapter extends ListAdapter<GaitData, GaitHistoryAdapter.GaitViewHolder> {
 
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault());
+    private OnGaitItemClickListener listener;
 
     public GaitHistoryAdapter() {
         super(DIFF_CALLBACK);
@@ -35,10 +36,10 @@ public class GaitHistoryAdapter extends ListAdapter<GaitData, GaitHistoryAdapter
         @Override
         public boolean areContentsTheSame(@NonNull GaitData oldItem, @NonNull GaitData newItem) {
             return oldItem.getStatus().equals(newItem.getStatus()) &&
-                   oldItem.getCadence() == newItem.getCadence() &&
-                   oldItem.getStepVariability() == newItem.getStepVariability() &&
-                   oldItem.getSymmetryIndex() == newItem.getSymmetryIndex() &&
-                   oldItem.getStepLength() == newItem.getStepLength();
+                    oldItem.getCadence() == newItem.getCadence() &&
+                    oldItem.getStepVariability() == newItem.getStepVariability() &&
+                    oldItem.getSymmetryIndex() == newItem.getSymmetryIndex() &&
+                    oldItem.getStepLength() == newItem.getStepLength();
         }
     };
 
@@ -54,6 +55,11 @@ public class GaitHistoryAdapter extends ListAdapter<GaitData, GaitHistoryAdapter
     public void onBindViewHolder(@NonNull GaitViewHolder holder, int position) {
         GaitData gaitData = getItem(position);
         holder.bind(gaitData);
+
+        // Set click listener if available
+        if (listener != null) {
+            holder.itemView.setOnClickListener(v -> listener.onGaitItemClick(gaitData));
+        }
     }
 
     static class GaitViewHolder extends RecyclerView.ViewHolder {
@@ -89,5 +95,15 @@ public class GaitHistoryAdapter extends ListAdapter<GaitData, GaitHistoryAdapter
                     gaitData.getCadence(), gaitData.getSymmetryIndex(), gaitData.getStepVariability());
             detailsText.setText(details);
         }
+    }
+
+    // Interface for click events
+    public interface OnGaitItemClickListener {
+        void onGaitItemClick(GaitData gaitData);
+    }
+
+    // Method to set click listener
+    public void setOnGaitItemClickListener(OnGaitItemClickListener listener) {
+        this.listener = listener;
     }
 }

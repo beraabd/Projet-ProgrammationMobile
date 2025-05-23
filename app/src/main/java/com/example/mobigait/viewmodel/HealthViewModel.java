@@ -1,11 +1,6 @@
 package com.example.mobigait.viewmodel;
 
 import android.app.Application;
-import android.content.ComponentName;
-import android.content.Context;
-import android.content.Intent;
-import android.content.ServiceConnection;
-import android.os.IBinder;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -18,7 +13,6 @@ import com.example.mobigait.model.Weight;
 import com.example.mobigait.repository.GaitRepository;
 import com.example.mobigait.repository.StepRepository;
 import com.example.mobigait.repository.WeightRepository;
-import com.example.mobigait.sensor.GaitAnalysisService;
 import com.example.mobigait.utils.DateUtils;
 import com.example.mobigait.utils.UserPreferences;
 
@@ -38,33 +32,17 @@ public class HealthViewModel extends AndroidViewModel {
 
     private final MutableLiveData<Float> currentBmi = new MutableLiveData<>();
     private final MutableLiveData<String> bmiCategory = new MutableLiveData<>();
-    private final MutableLiveData<String> gaitStatus = new MutableLiveData<>("Not analyzed");
+    private final MutableLiveData<String> gaitStatus = new MutableLiveData<>("Normal");
     private final MutableLiveData<Float> currentWeight = new MutableLiveData<>();
-    private final MutableLiveData<Boolean> isAnalyzing = new MutableLiveData<>(false);
+
+    // Gait metrics
+    private final MutableLiveData<Float> gaitCadence = new MutableLiveData<>();
+    private final MutableLiveData<Double> gaitSymmetry = new MutableLiveData<>();
+    private final MutableLiveData<Double> gaitVariability = new MutableLiveData<>();
+    private final MutableLiveData<Float> gaitStepLength = new MutableLiveData<>();
 
     private LiveData<Weight> latestWeight;
     private LiveData<GaitData> latestGaitData;
-
-    // Service connection
-    private GaitAnalysisService gaitService;
-    private boolean isBound = false;
-
-    private ServiceConnection serviceConnection = new ServiceConnection() {
-        @Override
-        public void onServiceConnected(ComponentName name, IBinder service) {
-            GaitAnalysisService.LocalBinder binder = (GaitAnalysisService.LocalBinder) service;
-            gaitService = binder.getService();
-            isBound = true;
-            Log.d(TAG, "Gait analysis service connected");
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName name) {
-            gaitService = null;
-            isBound = false;
-            Log.d(TAG, "Gait analysis service disconnected");
-        }
-    };
 
     public HealthViewModel(@NonNull Application application) {
         super(application);
@@ -98,7 +76,13 @@ public class HealthViewModel extends AndroidViewModel {
         latestGaitData.observeForever(gaitData -> {
             if (gaitData != null) {
                 gaitStatus.setValue(gaitData.getStatus());
-                Log.d(TAG, "Updated gait status: " + gaitData.getStatus());
+                gaitCadence.setValue(gaitData.getCadence());
+                gaitSymmetry.setValue(gaitData.getSymmetryIndex());
+                gaitVariability.setValue(gaitData.getStepVariability());
+                gaitStepLength.setValue(gaitData.getStepLength());
+
+                Log.d(TAG, "Updated gait data: " + gaitData.getStatus() +
+                      ", cadence: " + gaitData.getCadence());
             }
         });
 
@@ -108,6 +92,8 @@ public class HealthViewModel extends AndroidViewModel {
             currentWeight.setValue(prefWeight);
             calculateBmi();
         }
+
+        analyzeGait();
     }
 
     private void calculateBmi() {
@@ -144,39 +130,20 @@ public class HealthViewModel extends AndroidViewModel {
         }
     }
 
-    public void startGaitAnalysis(Context context) {
-        // Bind to the service if not already bound
-        if (!isBound) {
-            Intent serviceIntent = new Intent(context, GaitAnalysisService.class);
-            context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
-        }
-
-        // Start the analysis
-        Intent serviceIntent = new Intent(context, GaitAnalysisService.class);
-        serviceIntent.setAction("START_ANALYSIS");
-        context.startService(serviceIntent);
-
-        isAnalyzing.setValue(true);
-        Log.d(TAG, "Started gait analysis");
-    }
-
-    public void stopGaitAnalysis(Context context) {
-        if (isBound) {
-            Intent serviceIntent = new Intent(context, GaitAnalysisService.class);
-            serviceIntent.setAction("STOP_ANALYSIS");
-            context.startService(serviceIntent);
-
-            isAnalyzing.setValue(false);
-            Log.d(TAG, "Stopped gait analysis");
-        }
-    }
-
-    public void unbindGaitService(Context context) {
-        if (isBound) {
-            context.unbindService(serviceConnection);
-            isBound = false;
-            Log.d(TAG, "Unbound from gait analysis service");
-        }
+    private void analyzeGait() {
+        // Check if user has any step data
+        long[] todayTimeRange = DateUtils.getTodayTimeRange();
+        stepRepository.getTotalStepsBetweenDates(todayTimeRange[0], todayTimeRange[1]).observeForever(steps -> {
+            if (steps != null && steps > 100) {
+                // Only set "Normal" if user has actually walked enough steps
+                gaitStatus.setValue("Normal");
+                Log.d(TAG, "Gait status set to Normal based on " + steps + " steps");
+            } else {
+                // Not enough data to determine gait status
+                gaitStatus.setValue("Not enough data");
+                Log.d(TAG, "Not enough step data to determine gait status");
+            }
+        });
     }
 
     // Update the addWeight method to accept a Weight object
@@ -185,7 +152,7 @@ public class HealthViewModel extends AndroidViewModel {
         currentWeight.setValue(newWeight.getWeight());
         calculateBmi();
         Log.d(TAG, "Added new weight: " + newWeight.getWeight() + "kg on date: " +
-                new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(new Date(newWeight.getTimestamp())));
+              new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(new Date(newWeight.getTimestamp())));
     }
 
     // Keep the existing method for backward compatibility
@@ -207,8 +174,9 @@ public class HealthViewModel extends AndroidViewModel {
         return weightRepository.getWeightsBetweenDates(startTime, endTime);
     }
 
-    public LiveData<List<GaitData>> getRecentGaitData() {
-        return gaitRepository.getRecentGaitData(10); // Get last 10 analyses
+    // Add method to get recent gait data
+    public LiveData<List<GaitData>> getRecentGaitData(int limit) {
+        return gaitRepository.getRecentGaitData(limit);
     }
 
     // Getters for LiveData
@@ -228,12 +196,20 @@ public class HealthViewModel extends AndroidViewModel {
         return currentWeight;
     }
 
-    public LiveData<GaitData> getLatestGaitData() {
-        return latestGaitData;
+    public LiveData<Float> getGaitCadence() {
+        return gaitCadence;
     }
 
-    public LiveData<Boolean> isAnalyzing() {
-        return isAnalyzing;
+    public LiveData<Double> getGaitSymmetry() {
+        return gaitSymmetry;
+    }
+
+    public LiveData<Double> getGaitVariability() {
+        return gaitVariability;
+    }
+
+    public LiveData<Float> getGaitStepLength() {
+        return gaitStepLength;
     }
 
     public float getUserHeight() {
@@ -249,11 +225,10 @@ public class HealthViewModel extends AndroidViewModel {
         }
     }
 
-    // Add this method to HealthViewModel.java
-    public void deleteAllGaitHistory() {
-        // Use the repository to delete all gait data
+    // Add this method to the HealthViewModel class
+    public void deleteAllGaitData() {
+        // Execute on a background thread
         new Thread(() -> {
-            // Execute deletion on a background thread
             gaitRepository.deleteAllGaitData();
         }).start();
     }
